@@ -89,7 +89,7 @@
       if (config) {
         humansInput.min = config.min_humans ?? 1;
         humansInput.max = config.max_humans ?? 8;
-        humansInput.value = config.num_humans ?? 2;
+        humansInput.value = config.num_humans ?? 3;
       }
     })
     .catch(() => {})

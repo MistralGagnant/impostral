@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     # --- Game composition ------------------------------------------------
     # `num_humans` is the default seat count offered when creating a lobby;
     # the creator may pick any value within [min_humans, max_humans].
-    num_humans: int = 2
-    num_llms: int = 4
+    num_humans: int = 3
+    num_llms: int = 3
     min_humans: int = 1
     max_humans: int = 8
     max_rounds: int = 5

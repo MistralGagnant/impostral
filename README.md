@@ -28,7 +28,7 @@ cp .env.example .env   # then fill in MISTRAL_API_KEY
 ```
 
 Open http://localhost:8000 and click **Play**. Quick play joins the oldest public lobby with
-a free human seat, or creates one with the default composition (2 humans + 4 AIs). Public
+a free human seat, or creates one with the default composition (3 humans + 3 AIs). Public
 games start automatically when all human seats are connected. Named private lobbies remain
 available under **Private lobby options** and keep the explicit ready step.
 

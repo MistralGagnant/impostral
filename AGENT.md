@@ -58,8 +58,8 @@ interaction unlocks audio playback under autoplay policies.
 | STT | `voxtral-mini-latest` | `IMPOSTRAL_STT_MODEL` |
 | TTS | `voxtral-mini-tts-latest` | `IMPOSTRAL_TTS_MODEL` |
 
-The default room has two humans and four agents, using Large, Medium, Small, and
-Ministral respectively. Agents also use different personas, temperatures, and
+The default room has three humans and three agents, using Large, Medium, and
+Small respectively. Agents also use different personas, temperatures, and
 persona-specific human few-shot examples from `PERSONAS` in
 `app/agents/llm_agent.py`. Guided decoding enforces a strict JSON Schema with
 private `thinking` and one public `output` utterance of at most 100 characters,
