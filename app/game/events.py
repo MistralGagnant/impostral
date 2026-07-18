@@ -49,8 +49,13 @@ class ReadyMsg(BaseModel):
     type: Literal["ready"]
 
 
+class PlaybackCompleteMsg(BaseModel):
+    type: Literal["playback_complete"]
+    playback_id: str
+
+
 ClientMessage = (
-    JoinMsg | AudioBlobMsg | SubmitVoteMsg | ReadyMsg
+    JoinMsg | AudioBlobMsg | SubmitVoteMsg | ReadyMsg | PlaybackCompleteMsg
 )
 
 _PARSERS = {
@@ -58,6 +63,7 @@ _PARSERS = {
     "audio_blob": AudioBlobMsg,
     "submit_vote": SubmitVoteMsg,
     "ready": ReadyMsg,
+    "playback_complete": PlaybackCompleteMsg,
 }
 
 
@@ -93,13 +99,17 @@ def srv_phase_change(*, phase: str, deadline: Optional[float], prompt: str = "")
     return {"type": "phase_change", "phase": phase, "deadline": deadline, "prompt": prompt}
 
 
-def srv_utterance(*, seat: str, text: str, audio_url: Optional[str], context: str = "") -> dict:
+def srv_utterance(
+    *, seat: str, text: str, audio_url: Optional[str], context: str = "",
+    playback_id: str = "",
+) -> dict:
     return {
         "type": "utterance",
         "seat": seat,
         "text": text,
         "audio_url": audio_url,
         "context": context,  # For example: "answer" or "to Player C".
+        "playback_id": playback_id,
     }
 
 

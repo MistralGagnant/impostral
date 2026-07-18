@@ -43,6 +43,7 @@ def record_game(room, winners: list[str]) -> None:
         humans = [
             {
                 "seat": seat.id,
+                "won": seat.id in winners,
                 "survived": seat.alive,
                 "eliminated_round": seat.eliminated_round,
                 "votes_total": seat.votes_total,

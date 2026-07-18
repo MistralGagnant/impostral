@@ -110,6 +110,22 @@ class VotingTest(unittest.IsolatedAsyncioTestCase):
             "Player C": "mistral-small-latest",
         })
 
+    async def test_one_human_and_one_ai_share_the_win(self) -> None:
+        room = StubRoom([
+            StubSeat("Player A", "human"),
+            StubSeat("Player B", "llm", StubAgent(), "mistral-large-latest"),
+        ])
+        engine = make_engine(room)
+
+        self.assertTrue(engine._check_end())
+        with patch("app.game.state_machine.stats.record_game"):
+            await engine._game_over()
+
+        game_over = next(msg for msg in room.messages if msg["type"] == "game_over")
+        self.assertEqual(game_over["winner"], "shared")
+        self.assertEqual(game_over["winners"], ["Player A", "Player B"])
+        self.assertIn("impossible to tell apart", game_over["message"])
+
     async def test_every_seat_votes_and_a_tie_triggers_a_restricted_runoff(self) -> None:
         agent_b = StubAgent(["Player A", "Player A"])
         agent_d = StubAgent(["Player B", "Player B"])

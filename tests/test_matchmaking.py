@@ -154,7 +154,47 @@ class MatchmakingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(seat.claimed)
         self.assertEqual(seat.player_id, "")
-        self.assertIs(room.free_human_seat(), seat)
+        self.assertIsNone(self.manager.get(room.id))
+
+    async def test_finished_lobby_is_removed_immediately(self) -> None:
+        room, _, _ = await self.manager.matchmake("player_0001", "session_0001")
+        room.status = "finished"
+        room.finished_at = time.time()
+
+        await self.manager.cleanup()
+
+        self.assertIsNone(self.manager.get(room.id))
+
+    async def test_playback_waits_for_every_connected_human(self) -> None:
+        room = Room(id="audio", num_humans=2, num_llms=0)
+        _setup_test_seats(room)
+        humans = list(room.seats.values())
+        for seat in humans:
+            seat.connected = True
+
+        done = room.expect_playback("clip-1")
+        room.resolve_playback(humans[0].id, "clip-1")
+        self.assertFalse(done.done())
+        room.resolve_playback(humans[1].id, "clip-1")
+        self.assertTrue(done.done())
+
+    async def test_abandoned_running_lobby_is_removed_after_reconnect_grace(self) -> None:
+        room, token, _ = await self.manager.matchmake("player_0001", "session_0001")
+        socket = object()
+        seat = await room.attach(
+            socket,
+            "Anonymous",
+            player_id="player_0001",
+            session_id="session_0001",
+            reservation_token=token,
+        )
+        room.status = "running"
+        room.detach(socket)
+        seat.disconnected_at = time.time() - self.settings.reconnect_grace_seconds - 1
+
+        await self.manager.cleanup()
+
+        self.assertIsNone(self.manager.get(room.id))
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ import asyncio
 import base64
 import logging
 import random
+import secrets
 import time
 from typing import Optional
 
@@ -239,6 +240,11 @@ class GameEngine:
             not self.room.llms_alive()
             or not self.room.humans_alive()
             or len(self.room.alive_seats()) <= 1
+            or (
+                len(self.room.alive_seats()) == 2
+                and len(self.room.humans_alive()) == 1
+                and len(self.room.llms_alive()) == 1
+            )
         )
 
     async def _game_over(self) -> None:
@@ -246,9 +252,16 @@ class GameEngine:
         self.room.status = "finished"
         self.room.finished_at = time.time()
         self.room.updated_at = self.room.finished_at
-        survivors = [s.id for s in self.room.llms_alive()]
-        if survivors:
-            winners = survivors
+        surviving_humans = [s.id for s in self.room.humans_alive()]
+        surviving_llms = [s.id for s in self.room.llms_alive()]
+        if len(surviving_humans) == 1 and len(surviving_llms) == 1:
+            winners = surviving_humans + surviving_llms
+            result = (
+                f"{surviving_humans[0]} and {surviving_llms[0]} win together — "
+                "one human and one AI are impossible to tell apart."
+            )
+        elif surviving_llms:
+            winners = surviving_llms
             if not self.room.humans_alive():
                 result = "The AIs have won — no humans remain."
             else:
@@ -269,7 +282,8 @@ class GameEngine:
         stats.record_game(self.room, winners)
         await self.room.broadcast(
             events.srv_game_over(
-                winner="agents", winners=winners, roles=roles,
+                winner="shared" if surviving_humans and surviving_llms else "agents",
+                winners=winners, roles=roles,
                 models=models, message=result,
             )
         )
@@ -282,9 +296,22 @@ class GameEngine:
         """Anonymise et diffuse une prise de parole (texte + audio voix du siège)."""
         self.room.add_utterance(seat.id, text, context)
         audio_url = await tts.synthesize(text, voice=seat.voice)
+        playback_id = secrets.token_urlsafe(12) if audio_url else ""
+        playback_done = self.room.expect_playback(playback_id) if playback_id else None
         await self.room.broadcast(
-            events.srv_utterance(seat=seat.id, text=text, audio_url=audio_url, context=context)
+            events.srv_utterance(
+                seat=seat.id, text=text, audio_url=audio_url, context=context,
+                playback_id=playback_id,
+            )
         )
+        if playback_done is not None:
+            try:
+                await asyncio.wait_for(playback_done, timeout=60)
+            except asyncio.TimeoutError:
+                self.room.cancel_playback(playback_id)
+            except asyncio.CancelledError:
+                self.room.cancel_playback(playback_id)
+                raise
         await asyncio.sleep(self.settings.reveal_gap_seconds)
 
     async def _request_human(self, seat, *, mode: str, dur: int,

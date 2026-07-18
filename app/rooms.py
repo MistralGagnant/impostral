@@ -93,6 +93,10 @@ class Room:
     # Human inputs expected by the engine (seat_id -> Future)
     _pending: dict = field(default_factory=dict)
     _pending_messages: dict = field(default_factory=dict)
+    _playback_waiters: dict[str, tuple[set[str], asyncio.Future]] = field(
+        default_factory=dict
+    )
+    ever_occupied: bool = False
 
     # ------------------------------------------------------------------
     # Composition
@@ -142,6 +146,7 @@ class Room:
         seat.session_id = session_id
         seat.reservation_token = token
         seat.reserved_until = time.time() + max(1, ttl)
+        self.ever_occupied = True
         self.updated_at = time.time()
         return token
 
@@ -208,6 +213,7 @@ class Room:
         seat.player_id = player_id
         seat.session_id = session_id
         seat.claimed = True
+        self.ever_occupied = True
         seat.disconnected_at = 0.0
         self._seat_of_ws[ws] = seat.id
         self._ws_of_seat[seat.id] = ws
@@ -223,6 +229,8 @@ class Room:
                 self.seats[sid].connected = False
                 self.seats[sid].disconnected_at = time.time()
                 self.updated_at = time.time()
+            for playback_id in list(self._playback_waiters):
+                self.resolve_playback(sid, playback_id)
 
     def seat_of(self, ws) -> Optional[str]:
         return self._seat_of_ws.get(ws)
@@ -332,6 +340,35 @@ class Room:
     def cancel_input(self, seat_id: str) -> None:
         self._pending.pop(seat_id, None)
         self._pending_messages.pop(seat_id, None)
+
+    def expect_playback(self, playback_id: str) -> Optional[asyncio.Future]:
+        """Wait until every currently connected player finishes one TTS clip."""
+        listeners = {
+            seat.id
+            for seat in self.seats.values()
+            if seat.kind == "human" and seat.connected
+        }
+        if not listeners:
+            return None
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        self._playback_waiters[playback_id] = (listeners, future)
+        return future
+
+    def resolve_playback(self, seat_id: str, playback_id: str) -> None:
+        waiter = self._playback_waiters.get(playback_id)
+        if waiter is None:
+            return
+        listeners, future = waiter
+        listeners.discard(seat_id)
+        if not listeners:
+            self._playback_waiters.pop(playback_id, None)
+            if not future.done():
+                future.set_result(None)
+
+    def cancel_playback(self, playback_id: str) -> None:
+        waiter = self._playback_waiters.pop(playback_id, None)
+        if waiter is not None and not waiter[1].done():
+            waiter[1].cancel()
 
 
 class RoomManager:
@@ -459,9 +496,23 @@ class RoomManager:
         stale_ids: list[str] = []
         for room_id, room in self._rooms.items():
             room.release_stale_waiting_seats(now, settings.reconnect_grace_seconds)
-            if room.status == "finished" and room.finished_at and (
-                room.finished_at + settings.finished_lobby_ttl_seconds <= now
+            if room.status == "finished":
+                stale_ids.append(room_id)
+            elif room.status == "running" and not any(
+                seat.connected for seat in room.seats.values() if seat.kind == "human"
+            ) and all(
+                not seat.claimed
+                or (
+                    seat.disconnected_at
+                    and seat.disconnected_at + settings.reconnect_grace_seconds <= now
+                )
+                for seat in room.seats.values()
+                if seat.kind == "human"
             ):
+                if room.engine_task and not room.engine_task.done():
+                    room.engine_task.cancel()
+                stale_ids.append(room_id)
+            elif room.status == "waiting" and room.ever_occupied and not room.has_waiting_occupants(now):
                 stale_ids.append(room_id)
             elif room.status == "waiting" and not room.has_waiting_occupants(now) and (
                 room.created_at + settings.waiting_lobby_ttl_seconds <= now

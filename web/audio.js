@@ -56,25 +56,30 @@
   const queue = [];
   let playing = false;
 
-  function enqueue(url) {
-    if (!url) return;
-    queue.push(url);
+  function enqueue(url, onComplete) {
+    if (!url) {
+      if (onComplete) onComplete();
+      return;
+    }
+    queue.push({ url, onComplete });
     pump();
   }
 
   function pump() {
     if (playing || queue.length === 0) return;
     playing = true;
-    const url = queue.shift();
+    const { url, onComplete } = queue.shift();
     const audio = new Audio(url);
-    audio.onended = audio.onerror = () => {
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
       playing = false;
+      if (onComplete) onComplete();
       pump();
     };
-    audio.play().catch(() => {
-      playing = false;
-      pump();
-    });
+    audio.onended = audio.onerror = finish;
+    audio.play().catch(finish);
   }
 
   window.ImpostralAudio = { startRecording, stopRecording, isRecording, enqueue };

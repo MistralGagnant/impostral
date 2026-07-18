@@ -128,10 +128,12 @@ then the client opens the WebSocket below. `GET /config` exposes `min_humans` an
 `max_humans` so the client can bound the creation form.
 
 - **Client -> server**: `join{name, player_id, session_id, reservation_token}`,
-  `ready`, `audio_blob{audio_b64|text}`, and `submit_vote{target}`.
+  `ready`, `audio_blob{audio_b64|text}`, `submit_vote{target}`, and
+  `playback_complete{playback_id}`.
 - **Server -> client**: `room_state`, `phase_change{phase, deadline, prompt}`,
-  `utterance{seat, text, audio_url, context}`, `request_input{mode, deadline,
-  targets}`, `vote_result{tally, eliminated, runoff}`, `elimination{seat, role}`,
+  `utterance{seat, text, audio_url, context, playback_id}`,
+  `request_input{mode, deadline, targets}`, `vote_result{tally, eliminated, runoff}`,
+  `elimination{seat, role}`,
   `game_over{winner, winners, roles}`, and `system`.
 
 `deadline` is the number of remaining seconds; the client renders the countdown.
@@ -146,6 +148,7 @@ games; the client retries its WebSocket and returns to Play when the room is gon
 - Every active human and AI casts a vote. Missing or invalid votes receive a fallback choice.
 - A first-ballot tie triggers a second vote restricted to the tied seats; a persistent tie is then broken randomly.
 - The selected seat is eliminated regardless of role, so every completed round eliminates one player.
+- A final human and AI win together because neither can be distinguished from the other.
 - Once every AI is eliminated, the last AI eliminated wins.
 - At `max_rounds`, all undetected AIs tie.
 

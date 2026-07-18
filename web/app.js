@@ -67,11 +67,8 @@
   let phaseCountdown = null;
   let inputCountdown = null;
 
-  try {
-    currentMatch = JSON.parse(sessionStorage.getItem("impostral.activeMatch")) || null;
-  } catch {
-    currentMatch = null;
-  }
+  // A full page reload always starts fresh on the home screen.
+  try { sessionStorage.removeItem("impostral.activeMatch"); } catch {}
 
   function saveCurrentMatch(match) {
     currentMatch = match;
@@ -92,10 +89,7 @@
         humansInput.value = config.num_humans ?? 3;
       }
     })
-    .catch(() => {})
-    .finally(() => {
-      if (currentMatch?.room) connect(currentMatch, { reconnecting: true });
-    });
+    .catch(() => {});
 
   // ------------------------------------------------------------------
   // Lobby mode: create a new lobby or join an existing one by name.
@@ -491,7 +485,16 @@
     div.appendChild(text);
     transcriptEl.appendChild(div);
     transcriptEl.scrollTop = transcriptEl.scrollHeight;
-    if (msg.audio_url) A.enqueue(msg.audio_url);
+    if (msg.audio_url) {
+      A.enqueue(msg.audio_url, () => {
+        if (msg.playback_id && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: "playback_complete",
+            playback_id: msg.playback_id,
+          }));
+        }
+      });
+    }
   }
 
   // ------------------------------------------------------------------
@@ -625,6 +628,11 @@
   function onElimination(msg) {
     markDead(msg.seat, msg.role, msg.model);
     showElimination(msg.seat, msg.role, msg.model);
+    if (msg.seat === you) {
+      phasePrompt.textContent = "You have been eliminated.";
+      hideInput();
+      hideVote();
+    }
   }
 
   let elimActive = false;
@@ -652,7 +660,7 @@
 
     const stamp = document.createElement("span");
     stamp.className = "elim-stamp";
-    stamp.textContent = "Eliminated";
+    stamp.textContent = seatId === you ? "You are eliminated" : "Eliminated";
 
     card.append(img, name, stamp);
     const entries = Object.entries(voteTally).sort((a, b) => b[1] - a[1]);
@@ -703,11 +711,20 @@
     const banner = document.createElement("div");
     banner.className = "winner";
     const winners = msg.winners || [];
-    banner.textContent = msg.message || (winners.length === 1
+    const partner = winners.find((seatId) => seatId !== you);
+    const sharedHumanAiWin = winners.includes(you) && partner
+      && msg.roles?.[you] === "human" && msg.roles?.[partner] === "llm";
+    const resultText = sharedHumanAiWin
+      ? `You and ${partner} (AI) win together — impossible to tell you apart!`
+      : msg.message || (winners.length === 1
       ? `${winners[0]} wins the game!`
       : winners.length > 1
         ? `${winners.join(", ")} survive and tie.`
         : "Game over.");
+    const youWereEliminated = seats.some((seat) => seat.id === you && !seat.alive);
+    banner.textContent = youWereEliminated
+      ? `You were eliminated. ${resultText}`
+      : resultText;
     phasePrompt.textContent = "The hunt is over.";
     const arena = document.querySelector(".arena-viz");
     arena.querySelector(".elim-overlay")?.remove();

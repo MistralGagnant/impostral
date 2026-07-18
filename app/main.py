@@ -145,6 +145,9 @@ async def _maybe_start(room) -> None:
     room.updated_at = time.time()
     engine = GameEngine(room)
     room.engine_task = asyncio.create_task(engine.run())
+    room.engine_task.add_done_callback(
+        lambda _task: asyncio.create_task(rooms.cleanup())
+    )
     log.info("Game started in room %s", room.id)
 
 
@@ -218,6 +221,10 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                 await _maybe_start(room)
                 continue
 
+            if msg.type == "playback_complete":
+                room.resolve_playback(seat_id, msg.playback_id)
+                continue
+
             # audio_blob / submit_vote -> expected input
             room.resolve_input(seat_id, _normalize(msg))
 
@@ -242,3 +249,9 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                 except Exception:  # noqa: BLE001
                     pass
             await rooms.cleanup()
+            asyncio.create_task(_cleanup_after_reconnect_grace())
+
+
+async def _cleanup_after_reconnect_grace() -> None:
+    await asyncio.sleep(max(1, get_settings().reconnect_grace_seconds))
+    await rooms.cleanup()
