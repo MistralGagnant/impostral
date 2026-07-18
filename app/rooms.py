@@ -29,6 +29,11 @@ class Seat:
     name: str = ""  # Private name, never broadcast to other players.
     agent: Optional[LLMAgent] = None
     connected: bool = False  # Human-seat connection state.
+    # Model tracking (LLM seats only).
+    model: Optional[str] = None
+    votes_total: int = 0  # Votes this LLM cast that named a target.
+    votes_correct: int = 0  # Of those, how many named an actual human.
+    eliminated_round: Optional[int] = None  # None means the seat survived.
 
     def public(self, *, reveal_role: bool = False) -> dict:
         d = {"id": self.id, "alive": self.alive, "connected": self.connected}
@@ -72,15 +77,24 @@ class Room:
         kinds = ["human"] * settings.num_humans + ["llm"] * settings.num_llms
         random.shuffle(kinds)  # Mix human and LLM seats.
 
+        # Shuffle the model pool per game and assign round-robin to LLM seats, so
+        # several models compete each game and pairings vary between games.
+        model_pool = list(settings.model_pool_list)
+        random.shuffle(model_pool)
+
         persona_idx = 0
+        llm_idx = 0
         for i in range(total):
             sid = f"Player {letters[i]}"
             voice = voices[i % len(voices)]
             kind = kinds[i]
             seat = Seat(id=sid, kind=kind, voice=voice)
             if kind == "llm":
-                seat.agent = LLMAgent(sid, persona_idx)
+                model = model_pool[llm_idx % len(model_pool)]
+                seat.model = model
+                seat.agent = LLMAgent(sid, persona_idx, model=model)
                 persona_idx += 1
+                llm_idx += 1
             self.seats[sid] = seat
 
     def free_human_seat(self) -> Optional[Seat]:

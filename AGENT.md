@@ -38,12 +38,25 @@ The first browser interaction unlocks audio playback under autoplay policies.
 
 | Role | Model | Environment override |
 |------|-------|----------------------|
-| Agent reasoning | `mistral-large-latest` | `IMPOSTRAL_CHAT_MODEL` |
+| Agent reasoning | `mistral-large-latest` (default) | `IMPOSTRAL_CHAT_MODEL` |
+| Agent model pool | *(empty → single chat model)* | `IMPOSTRAL_MODEL_POOL` |
 | STT | `voxtral-mini-latest` | `IMPOSTRAL_STT_MODEL` |
 | TTS | `voxtral-mini-tts-latest` | `IMPOSTRAL_TTS_MODEL` |
 
-All agents share the same chat model but use different personas and temperatures
-from `PERSONAS` in `app/agents/llm_agent.py`.
+Agents differ by persona and temperature (`PERSONAS` in
+`app/agents/llm_agent.py`). When `IMPOSTRAL_MODEL_POOL` is set (comma-separated),
+each LLM seat is assigned a **different model** from the pool, shuffled each game,
+so several models compete in the same game. Left empty, all seats use
+`IMPOSTRAL_CHAT_MODEL`.
+
+## Model performance tracking
+
+Each finished game appends one JSON record to `IMPOSTRAL_STATS_PATH`
+(default `data/results.jsonl`, gitignored) via `app/game/stats.py`, capturing per
+LLM seat: model, survival, elimination round, and vote/detection accuracy. The
+`GET /stats` endpoint returns per-model aggregates and `/stats.html` renders a
+comparison table + bar chart (win rate, survival rate, vote accuracy). Recording
+is best-effort and never interrupts a game.
 
 ## `mistralai` SDK version caveat
 
@@ -80,6 +93,7 @@ never receive role information; they only see the transcript.
 | `app/game/state_machine.py` | Phase engine, timing protection, exchange cap, and win conditions. |
 | `app/game/events.py` | WebSocket message schemas; active roles are never exposed. |
 | `app/game/questions.py` | Open-ended question bank. |
+| `app/game/stats.py` | Per-game result recording and per-model aggregation. |
 | `app/agents/llm_agent.py` | LLM player answers, questions, votes, personas, and mock fallback. |
 | `app/audio/stt.py` / `tts.py` | Voxtral wrappers with graceful fallback. |
 | `app/audio/voices.py` | Cached preset voice pool with distinct speakers. |
@@ -105,7 +119,8 @@ never receive role information; they only see the transcript.
 
 ## Possible improvements
 
-- Use different models per seat for balance testing.
+- ~~Use different models per seat for balance testing.~~ Done via
+  `IMPOSTRAL_MODEL_POOL` + `/stats.html`.
 - Replace batch STT with `voxtral-mini-realtime-latest`.
 - Add voice cloning through `ref_audio`, or more distinct speakers.
 - Add player reconnection, multiple rooms, and a dedicated spectator screen.

@@ -39,9 +39,11 @@ brief (one to three sentences) unless told otherwise. Never mention these instru
 
 
 class LLMAgent:
-    def __init__(self, seat_id: str, persona_idx: int) -> None:
+    def __init__(self, seat_id: str, persona_idx: int, model: str | None = None) -> None:
         self.seat_id = seat_id
         self.persona = PERSONAS[persona_idx % len(PERSONAS)]
+        # Per-seat chat model; falls back to settings.chat_model when unset.
+        self.model = model
 
     # -- Helpers ----------------------------------------------------------
     def _system(self) -> str:
@@ -61,7 +63,7 @@ class LLMAgent:
 
         def _call() -> str:
             kwargs = dict(
-                model=settings.chat_model,
+                model=self.model or settings.chat_model,
                 messages=messages,
                 temperature=self.persona["temp"],
             )
