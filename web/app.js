@@ -9,6 +9,9 @@
   let currentRound = 0;
   let maxRounds = 5;
   const latestUtterances = new Map();
+  // Latest ballot: seat id -> votes received, shown as badges on the arena.
+  let voteTally = {};
+  let voteEliminated = null;
 
   // --- DOM elements ---
   const $ = (id) => document.getElementById(id);
@@ -233,6 +236,13 @@
       const answer = document.createElement("span");
       answer.className = "seat-answer";
       answer.textContent = latestUtterances.get(s.id) || "";
+      const votes = voteTally[s.id];
+      if (votes) {
+        const badge = document.createElement("span");
+        badge.className = "vote-badge" + (s.id === voteEliminated ? " out" : "");
+        badge.textContent = `${votes} vote${votes > 1 ? "s" : ""}`;
+        avatarWrap.appendChild(badge);
+      }
       div.append(avatarWrap, meta, answer);
       seatsEl.appendChild(div);
     }
@@ -268,7 +278,14 @@
     phaseName.textContent = PHASE_LABEL[msg.phase] || msg.phase;
     if (msg.prompt) currentQuestion = msg.prompt;
     phasePrompt.textContent = currentQuestion || phaseFallback(msg.phase);
-    if (msg.phase === "question") latestUtterances.clear();
+    if (msg.phase === "question") {
+      latestUtterances.clear();
+      // Keep the last ballot visible while the elimination reveal plays out.
+      if (!elimActive) {
+        voteTally = {};
+        voteEliminated = null;
+      }
+    }
     hideInput();
     hideVote();
     renderSeats();
@@ -429,6 +446,9 @@
 
   function onVoteResult(msg) {
     hideVote();
+    voteTally = msg.tally || {};
+    voteEliminated = msg.eliminated || null;
+    renderSeats();
     const parts = Object.entries(msg.tally).map(([k, v]) => `${k}: ${v}`);
     addLog("Votes — " + (parts.join(", ") || "none") +
       (msg.eliminated
@@ -443,11 +463,14 @@
     showElimination(msg.seat, msg.role);
   }
 
-  // Full-arena overlay: eliminated avatar, red stamp, and role reveal.
+  let elimActive = false;
+
+  // Full-arena overlay: eliminated avatar, red stamp, vote tally, role reveal.
   function showElimination(seatId, role) {
     const arena = document.querySelector(".arena-viz");
     if (!arena) return;
     arena.querySelector(".elim-overlay")?.remove();
+    elimActive = true;
 
     const overlay = document.createElement("div");
     overlay.className = "elim-overlay";
@@ -468,6 +491,18 @@
     stamp.textContent = "Eliminated";
 
     card.append(img, name, stamp);
+    const entries = Object.entries(voteTally).sort((a, b) => b[1] - a[1]);
+    if (entries.length) {
+      const tally = document.createElement("span");
+      tally.className = "elim-tally";
+      for (const [id, votes] of entries) {
+        const item = document.createElement("span");
+        item.className = "elim-tally-item" + (id === seatId ? " out" : "");
+        item.textContent = `${id} ×${votes}`;
+        tally.appendChild(item);
+      }
+      card.append(tally);
+    }
     if (role) {
       const reveal = document.createElement("span");
       reveal.className = "elim-role " + (role === "human" ? "is-human" : "is-llm");
@@ -480,8 +515,14 @@
     overlay.appendChild(card);
     arena.appendChild(overlay);
 
-    setTimeout(() => overlay.classList.add("leaving"), 3400);
-    setTimeout(() => overlay.remove(), 3900);
+    setTimeout(() => overlay.classList.add("leaving"), 3800);
+    setTimeout(() => {
+      overlay.remove();
+      elimActive = false;
+      voteTally = {};
+      voteEliminated = null;
+      renderSeats();
+    }, 4300);
   }
 
   function onGameOver(msg) {
@@ -503,6 +544,7 @@
     phasePrompt.textContent = "The hunt is over.";
     const arena = document.querySelector(".arena-viz");
     arena.querySelector(".elim-overlay")?.remove();
+    elimActive = false;
     document.querySelector(".winner")?.remove();
     arena.appendChild(banner);
   }

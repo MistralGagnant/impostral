@@ -79,12 +79,13 @@ main > section { flex: 1 1 auto; min-width: 0; min-height: 0; }
    -------------------------------------------------------------------------- */
 .join-screen {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(10px, 2.4vh, 26px);
-  padding: 8px clamp(18px, 4vw, 60px) 22px;
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(420px, 600px) minmax(190px, 1fr);
+  grid-template-rows: auto auto auto auto;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(8px, 2vh, 22px) clamp(16px, 3vw, 48px);
+  padding: 8px clamp(18px, 4vw, 60px) 10px;
   overflow: hidden;
 }
 
@@ -121,7 +122,7 @@ main > section { flex: 1 1 auto; min-width: 0; min-height: 0; }
 }
 @keyframes radar-spin { to { transform: rotate(360deg); } }
 
-.hero-copy { text-align: center; }
+.hero-copy { grid-column: 1 / -1; text-align: center; }
 .hero-copy h1 {
   margin: 0;
   font-family: var(--display);
@@ -208,17 +209,75 @@ input:focus, textarea:focus, select:focus {
 .mode-switch button { flex: 1; min-height: 36px; font-size: 0.66rem; opacity: 0.55; }
 .mode-switch button[aria-selected="true"] { background: var(--orange); color: #180900; opacity: 1; }
 
-.join-meta {
+.role-card {
   display: flex;
   align-items: center;
-  gap: clamp(14px, 3vw, 40px);
+  align-self: center;
+  gap: 16px;
+  min-height: 96px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+}
+.role-card--human { grid-area: 2 / 1; }
+.role-card--ai { grid-area: 2 / 3; justify-content: flex-end; text-align: right; }
+.role-card span { display: block; color: var(--muted); font-size: 0.64rem; letter-spacing: 0.13em; text-transform: uppercase; }
+.role-card strong { display: block; margin-top: 4px; color: var(--orange); font-size: 0.82rem; font-weight: 700; }
+.role-card img { width: 58px; height: 58px; object-fit: contain; }
+.role-icon { flex: 0 0 auto; color: var(--orange) !important; font-size: 2.6rem !important; line-height: 1; text-shadow: 0 0 12px rgba(255, 130, 5, 0.35); }
+.join-console { grid-area: 2 / 2; }
+
+.game-loop {
+  grid-column: 1 / -1;
+  display: flex;
+  width: min(620px, 78vw);
+  justify-content: space-between;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.game-loop li {
+  position: relative;
+  display: flex;
+  min-width: 96px;
+  align-items: center;
+  flex-direction: column;
+  gap: 7px;
   color: var(--muted);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
-.join-meta .sep { color: var(--faint); }
-.join-meta b { color: var(--orange); font-weight: 700; }
+.game-loop li:not(:last-child)::after {
+  position: absolute;
+  top: 15px;
+  left: calc(50% + 30px);
+  width: calc(100% - 6px);
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--orange-dim) 0 5px, transparent 5px 10px);
+  content: "";
+}
+.game-loop b {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  border: 1px solid var(--orange);
+  color: var(--orange);
+  font-size: 0.88rem;
+  place-items: center;
+}
+
+.character-lineup {
+  grid-column: 1 / -1;
+  width: min(680px, 72vw);
+  max-height: clamp(70px, 13vh, 120px);
+  object-fit: cover;
+  object-position: center 38%;
+  opacity: 0.22;
+  mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+}
 
 /* --------------------------------------------------------------------------
    Game screen
@@ -420,6 +479,29 @@ input:focus, textarea:focus, select:focus {
   content: "✕";
   place-items: center;
 }
+.vote-badge {
+  position: absolute;
+  top: -10px;
+  right: -26px;
+  z-index: 4;
+  padding: 2px 7px;
+  border: 1px solid var(--orange);
+  background: var(--bg);
+  color: var(--orange-bright);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: badge-pop 320ms cubic-bezier(0.2, 1.8, 0.4, 1);
+}
+.vote-badge.out {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+@keyframes badge-pop { from { opacity: 0; transform: scale(0.3); } }
+
 .seat.speaking .seat-avatar-wrap {
   background: rgba(255, 130, 5, 0.12);
   box-shadow: 0 0 0 5px rgba(255, 130, 5, 0.1), 0 0 30px rgba(255, 130, 5, 0.45);
@@ -559,6 +641,19 @@ body[data-phase="game_over"] .question-frame { display: none; }
 @keyframes stamp-in {
   from { opacity: 0; transform: rotate(-7deg) scale(2.4); }
 }
+.elim-tally {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 10px;
+  max-width: min(440px, 80%);
+  margin: 2px auto 0;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+.elim-tally-item { padding: 2px 8px; border: 1px solid var(--line-soft); }
+.elim-tally-item.out { border-color: var(--red); color: #ff8a70; }
 .elim-role { color: var(--muted); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; }
 .elim-role b { font-weight: 800; }
 .elim-role.is-llm b { color: var(--orange-bright); }
@@ -625,7 +720,9 @@ body[data-phase="game_over"] .question-frame { display: none; }
   body { overflow: auto; }
   .app-shell { height: auto; min-height: 100vh; }
   main { display: block; }
-  .join-screen { min-height: calc(100vh - 70px); }
+  .join-screen { display: flex; flex-direction: column; align-items: center; min-height: calc(100vh - 70px); justify-content: center; }
+  .role-card { width: min(420px, 100%); min-height: 72px; }
+  .character-lineup { width: min(560px, 90vw); }
   .game-screen { padding: 4px 12px 16px; }
   .game-layout, .game-screen.vote-open .game-layout { display: flex; flex-direction: column; height: auto; }
   .mission-panel { padding: 8px 14px; }
