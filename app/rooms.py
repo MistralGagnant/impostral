@@ -9,7 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import secrets
 import string
+import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -33,6 +35,14 @@ class Seat:
     votes_total: int = 0
     votes_correct: int = 0  # Votes targeting a competing AI.
     eliminated_round: Optional[int] = None
+    # Anonymous browser identity. These values are server-private and never
+    # included by `public`.
+    player_id: str = ""
+    session_id: str = ""
+    reservation_token: str = ""
+    reserved_until: float = 0.0
+    claimed: bool = False
+    disconnected_at: float = 0.0
 
     def public(self, *, reveal_role: bool = False) -> dict:
         d = {"id": self.id, "alive": self.alive, "connected": self.connected}
@@ -40,10 +50,26 @@ class Seat:
             d["role"] = self.kind
         return d
 
+    def reservation_active(self, now: Optional[float] = None) -> bool:
+        checked_at = time.time() if now is None else now
+        return bool(self.reservation_token) and self.reserved_until > checked_at
+
+    def clear_occupant(self) -> None:
+        self.connected = False
+        self.name = ""
+        self.player_id = ""
+        self.session_id = ""
+        self.reservation_token = ""
+        self.reserved_until = 0.0
+        self.claimed = False
+        self.disconnected_at = 0.0
+
 
 @dataclass
 class Room:
     id: str
+    visibility: str = "private"  # "public" matchmaking or "private" code.
+    status: str = "waiting"  # "waiting" | "running" | "finished".
     # Composition chosen when the lobby is created. Defaults are filled from
     # settings by `RoomManager.create` so `setup_seats` never sees zero.
     num_humans: int = 0
@@ -55,6 +81,9 @@ class Room:
     started: bool = False
     engine_task: Optional[asyncio.Task] = None
     ready_seats: set = field(default_factory=set)
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
+    finished_at: float = 0.0
 
     # Connections: WebSocket <-> seat
     _ws_all: set = field(default_factory=set)
@@ -63,6 +92,7 @@ class Room:
 
     # Human inputs expected by the engine (seat_id -> Future)
     _pending: dict = field(default_factory=dict)
+    _pending_messages: dict = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Composition
@@ -93,26 +123,96 @@ class Room:
                 persona_idx += 1
             self.seats[sid] = seat
 
-    def free_human_seat(self) -> Optional[Seat]:
+    def free_human_seat(self, now: Optional[float] = None) -> Optional[Seat]:
+        now = now or time.time()
         for seat in self.seats.values():
-            if seat.kind == "human" and not seat.connected:
+            if (
+                seat.kind == "human"
+                and not seat.connected
+                and not seat.claimed
+                and not seat.reservation_active(now)
+            ):
                 return seat
         return None
+
+    def reserve(self, seat: Seat, player_id: str, session_id: str, ttl: int) -> str:
+        """Reserve an unclaimed human seat for a matchmaking WebSocket."""
+        token = secrets.token_urlsafe(32)
+        seat.player_id = player_id
+        seat.session_id = session_id
+        seat.reservation_token = token
+        seat.reserved_until = time.time() + max(1, ttl)
+        self.updated_at = time.time()
+        return token
 
     # ------------------------------------------------------------------
     # Connections
     # ------------------------------------------------------------------
-    async def attach(self, ws, name: str) -> Optional[str]:
-        """Attach a WebSocket to a free human seat, or return None for a spectator."""
+    async def attach(
+        self,
+        ws,
+        name: str,
+        *,
+        player_id: str = "",
+        session_id: str = "",
+        reservation_token: str = "",
+    ) -> Optional[Seat]:
+        """Attach or reconnect an anonymous browser session to a human seat."""
         self._ws_all.add(ws)
-        seat = self.free_human_seat()
+        now = time.time()
+        self.release_stale_waiting_seats(
+            now, get_settings().reconnect_grace_seconds
+        )
+
+        # A disconnected session can reclaim its seat in either lobby mode.
+        seat = next(
+            (
+                candidate
+                for candidate in self.seats.values()
+                if candidate.kind == "human"
+                and candidate.claimed
+                and candidate.player_id == player_id
+                and candidate.session_id == session_id
+                and player_id
+                and session_id
+            ),
+            None,
+        )
+
+        if seat is None and reservation_token:
+            seat = next(
+                (
+                    candidate
+                    for candidate in self.seats.values()
+                    if candidate.kind == "human"
+                    and candidate.reservation_token == reservation_token
+                    and candidate.player_id == player_id
+                    and candidate.session_id == session_id
+                    and candidate.reservation_active(now)
+                ),
+                None,
+            )
+
+        # Public matchmaking seats always require their reservation ticket.
+        if seat is None and self.visibility == "private":
+            seat = self.free_human_seat(now)
         if seat is None:
-            return None  # Spectator
+            return None
+
+        previous_ws = self._ws_of_seat.get(seat.id)
+        if previous_ws is not None and previous_ws is not ws:
+            self.detach(previous_ws)
+
         seat.connected = True
-        seat.name = name
+        seat.name = name[:80]
+        seat.player_id = player_id
+        seat.session_id = session_id
+        seat.claimed = True
+        seat.disconnected_at = 0.0
         self._seat_of_ws[ws] = seat.id
         self._ws_of_seat[seat.id] = ws
-        return seat.id
+        self.updated_at = now
+        return seat
 
     def detach(self, ws) -> None:
         self._ws_all.discard(ws)
@@ -121,6 +221,8 @@ class Room:
             self._ws_of_seat.pop(sid, None)
             if sid in self.seats:
                 self.seats[sid].connected = False
+                self.seats[sid].disconnected_at = time.time()
+                self.updated_at = time.time()
 
     def seat_of(self, ws) -> Optional[str]:
         return self._seat_of_ws.get(ws)
@@ -139,6 +241,8 @@ class Room:
             self.detach(ws)
 
     async def send_seat(self, seat_id: str, msg: dict) -> bool:
+        if msg.get("type") == "request_input":
+            self._pending_messages[seat_id] = msg
         ws = self._ws_of_seat.get(seat_id)
         if ws is None:
             return False
@@ -148,6 +252,10 @@ class Room:
         except Exception:  # noqa: BLE001
             self.detach(ws)
             return False
+
+    async def resend_pending(self, seat_id: str) -> bool:
+        msg = self._pending_messages.get(seat_id)
+        return await self.send_seat(seat_id, msg) if msg else False
 
     # ------------------------------------------------------------------
     # Transcript
@@ -180,6 +288,30 @@ class Room:
             s.connected and s.id in self.ready_seats for s in humans
         )
 
+    def release_stale_waiting_seats(self, now: float, reconnect_grace: int) -> None:
+        """Release expired reservations and disconnected pre-game claims."""
+        if self.status != "waiting":
+            return
+        for seat in self.seats.values():
+            if seat.kind != "human" or seat.connected:
+                continue
+            expired_reservation = not seat.claimed and (
+                not seat.reservation_token or seat.reserved_until <= now
+            )
+            expired_claim = seat.claimed and seat.disconnected_at and (
+                seat.disconnected_at + reconnect_grace <= now
+            )
+            if expired_reservation or expired_claim:
+                self.ready_seats.discard(seat.id)
+                seat.clear_occupant()
+
+    def has_waiting_occupants(self, now: float) -> bool:
+        return any(
+            seat.kind == "human"
+            and (seat.connected or seat.claimed or seat.reservation_active(now))
+            for seat in self.seats.values()
+        )
+
     def llms_alive(self) -> list[Seat]:
         return [s for s in self.alive_seats() if s.kind == "llm"]
 
@@ -193,16 +325,19 @@ class Room:
 
     def resolve_input(self, seat_id: str, payload: Any) -> None:
         fut = self._pending.pop(seat_id, None)
+        self._pending_messages.pop(seat_id, None)
         if fut is not None and not fut.done():
             fut.set_result(payload)
 
     def cancel_input(self, seat_id: str) -> None:
         self._pending.pop(seat_id, None)
+        self._pending_messages.pop(seat_id, None)
 
 
 class RoomManager:
     def __init__(self) -> None:
         self._rooms: dict[str, Room] = {}
+        self._lock = asyncio.Lock()
 
     def create(
         self,
@@ -210,6 +345,7 @@ class RoomManager:
         *,
         num_humans: Optional[int] = None,
         num_llms: Optional[int] = None,
+        visibility: str = "private",
     ) -> Optional[Room]:
         """Create a lobby with the chosen composition.
 
@@ -221,6 +357,7 @@ class RoomManager:
         settings = get_settings()
         room = Room(
             id=room_id,
+            visibility=visibility,
             num_humans=settings.num_humans if num_humans is None else num_humans,
             num_llms=settings.num_llms if num_llms is None else num_llms,
         )
@@ -231,6 +368,108 @@ class RoomManager:
             room_id, room.num_humans, room.num_llms,
         )
         return room
+
+    async def create_private(
+        self, room_id: str, *, num_humans: int, num_llms: int
+    ) -> Optional[Room]:
+        async with self._lock:
+            self._cleanup_locked()
+            return self.create(
+                room_id,
+                num_humans=num_humans,
+                num_llms=num_llms,
+                visibility="private",
+            )
+
+    async def matchmake(
+        self, player_id: str, session_id: str
+    ) -> tuple[Room, str, bool]:
+        """Atomically reserve the first seat in the oldest public lobby."""
+        settings = get_settings()
+        async with self._lock:
+            self._cleanup_locked()
+            now = time.time()
+            candidates = sorted(
+                (
+                    room
+                    for room in self._rooms.values()
+                    if room.visibility == "public"
+                    and room.status == "waiting"
+                    and not room.started
+                ),
+                key=lambda room: room.created_at,
+            )
+
+            # Make retries idempotent while a reservation or claim is alive.
+            for candidate in candidates:
+                existing = next(
+                    (
+                        seat
+                        for seat in candidate.seats.values()
+                        if seat.kind == "human"
+                        and seat.player_id == player_id
+                        and seat.session_id == session_id
+                        and (seat.claimed or seat.reservation_active(now))
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    return candidate, existing.reservation_token, False
+
+            room = None
+            seat = None
+            created = False
+            for candidate in candidates:
+                available = candidate.free_human_seat(now)
+                if available is not None:
+                    room, seat = candidate, available
+                    break
+
+            if room is None or seat is None:
+                while True:
+                    room_id = f"quick-{secrets.token_hex(6)}"
+                    room = self.create(
+                        room_id,
+                        num_humans=settings.num_humans,
+                        num_llms=settings.num_llms,
+                        visibility="public",
+                    )
+                    if room is not None:
+                        created = True
+                        break
+                seat = room.free_human_seat(now)
+                if seat is None:  # Defensive: configuration guarantees humans.
+                    raise RuntimeError("Matchmaking room has no human seat")
+
+            token = room.reserve(
+                seat,
+                player_id,
+                session_id,
+                settings.matchmaking_reservation_seconds,
+            )
+            return room, token, created
+
+    async def cleanup(self) -> None:
+        async with self._lock:
+            self._cleanup_locked()
+
+    def _cleanup_locked(self) -> None:
+        settings = get_settings()
+        now = time.time()
+        stale_ids: list[str] = []
+        for room_id, room in self._rooms.items():
+            room.release_stale_waiting_seats(now, settings.reconnect_grace_seconds)
+            if room.status == "finished" and room.finished_at and (
+                room.finished_at + settings.finished_lobby_ttl_seconds <= now
+            ):
+                stale_ids.append(room_id)
+            elif room.status == "waiting" and not room.has_waiting_occupants(now) and (
+                room.created_at + settings.waiting_lobby_ttl_seconds <= now
+            ):
+                stale_ids.append(room_id)
+        for room_id in stale_ids:
+            self._rooms.pop(room_id, None)
+            log.info("Lobby removed: %s", room_id)
 
     def get(self, room_id: str) -> Optional[Room]:
         return self._rooms.get(room_id)

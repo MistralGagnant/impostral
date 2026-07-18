@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     max_rounds: int = 5
     reveal_role_on_elimination: bool = True
 
+    # --- Ephemeral lobby lifecycle --------------------------------------
+    matchmaking_reservation_seconds: int = 20
+    reconnect_grace_seconds: int = 30
+    waiting_lobby_ttl_seconds: int = 600
+    finished_lobby_ttl_seconds: int = 300
+
     # --- Phase durations in seconds -------------------------------------
     question_seconds: int = 45
     vote_seconds: int = 30

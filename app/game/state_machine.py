@@ -15,6 +15,7 @@ import asyncio
 import base64
 import logging
 import random
+import time
 from typing import Optional
 
 from ..audio import stt, tts
@@ -59,6 +60,9 @@ class GameEngine:
             raise
         except Exception:  # noqa: BLE001
             log.exception("Game engine crashed")
+            self.room.status = "finished"
+            self.room.finished_at = time.time()
+            self.room.updated_at = self.room.finished_at
             await self._system("An internal error interrupted the game.")
 
     # ------------------------------------------------------------------
@@ -225,18 +229,28 @@ class GameEngine:
     # Fin de partie
     # ------------------------------------------------------------------
     def _check_end(self) -> bool:
-        return not self.room.llms_alive() or len(self.room.alive_seats()) <= 1
+        return (
+            not self.room.llms_alive()
+            or not self.room.humans_alive()
+            or len(self.room.alive_seats()) <= 1
+        )
 
     async def _game_over(self) -> None:
         self.room.phase = Phase.GAME_OVER
+        self.room.status = "finished"
+        self.room.finished_at = time.time()
+        self.room.updated_at = self.room.finished_at
         survivors = [s.id for s in self.room.llms_alive()]
         if survivors:
             winners = survivors
-            result = (
-                f"{', '.join(winners)} remained undetected and tie for the win."
-                if len(winners) > 1
-                else f"{winners[0]} remained undetected and wins the game."
-            )
+            if not self.room.humans_alive():
+                result = "The AIs have won — no humans remain."
+            else:
+                result = (
+                    f"{', '.join(winners)} remained undetected and tie for the win."
+                    if len(winners) > 1
+                    else f"{winners[0]} remained undetected and wins the game."
+                )
         else:
             winners = self.eliminated_llms[-1:]  # dernière IA éliminée
             result = (
@@ -247,7 +261,9 @@ class GameEngine:
         roles = {s.id: s.kind for s in self.room.seats.values()}
         stats.record_game(self.room, winners)
         await self.room.broadcast(
-            events.srv_game_over(winner="agents", winners=winners, roles=roles)
+            events.srv_game_over(
+                winner="agents", winners=winners, roles=roles, message=result
+            )
         )
         await self._system("Game over. " + result)
 

@@ -29,16 +29,23 @@ exposes `mock_mode`.
 # Open http://localhost:8000 in one tab per human player.
 ```
 
-One player **creates a lobby** from the join screen, choosing a lobby name and
-the number of human players; everyone else **joins** by typing that same lobby
-name. Joining never creates a room, so a wrong name is rejected. Each tab then
-occupies a free human seat, and the game starts when every human clicks “I'm
-ready”. `IMPOSTRAL_NUM_HUMANS` is the default human count offered on creation
-(bounded by `IMPOSTRAL_MIN_HUMANS`/`IMPOSTRAL_MAX_HUMANS`); the AI count comes
-from `IMPOSTRAL_NUM_LLMS`. Configure timings through `IMPOSTRAL_`-prefixed
-variables such as `IMPOSTRAL_MAX_ROUNDS` and `IMPOSTRAL_QUESTION_SECONDS`; see
-`app/config.py`. The first browser interaction unlocks audio playback under
-autoplay policies.
+The default **Play** action uses anonymous quick matchmaking. `POST /matchmaking`
+atomically reserves a human seat in the oldest waiting public lobby, or creates a
+public lobby with the default composition. The browser opens the room WebSocket
+with that short-lived reservation ticket; public players are automatically ready
+and the game starts when all human seats are connected. A stable anonymous
+browser ID and a tab-specific session ID are stored locally for reconnection.
+There is no sign-up or public user profile.
+
+Named private lobbies remain available under **Private lobby options**. One
+player creates a lobby and chooses its human count; other players join using the
+same name. Private players retain the explicit “I'm ready” step. Joining never
+creates a private room, so a wrong name is rejected. `IMPOSTRAL_NUM_HUMANS` is
+the public/default human count (bounded by `IMPOSTRAL_MIN_HUMANS` and
+`IMPOSTRAL_MAX_HUMANS`); the AI count comes from `IMPOSTRAL_NUM_LLMS`. Configure
+timings through `IMPOSTRAL_`-prefixed variables such as `IMPOSTRAL_MAX_ROUNDS`
+and `IMPOSTRAL_QUESTION_SECONDS`; see `app/config.py`. The first browser
+interaction unlocks audio playback under autoplay policies.
 
 ## Default Mistral models (`app/config.py`)
 
@@ -94,7 +101,7 @@ never receive role information; they only see the transcript.
 
 | File | Purpose |
 |------|---------|
-| `app/main.py` | FastAPI app, `POST /lobby` creation, WebSocket, audio endpoint, and static web client. |
+| `app/main.py` | FastAPI app, quick matchmaking, private lobby creation, WebSocket, audio endpoint, and static web client. |
 | `app/config.py` | Models, timings, composition, and voice language settings. |
 | `app/mistral_client.py` | Shared Mistral client with robust 1.x/2.x imports. |
 | `app/rooms.py` | Rooms with per-lobby composition, seats, connections, and human input routing. |
@@ -110,19 +117,27 @@ never receive role information; they only see the transcript.
 
 ## WebSocket protocol
 
-Lobby creation is a separate HTTP step: `POST /lobby {name, num_humans}` creates
-the room (409 if the name is taken, 400 if `num_humans` is out of range), then
-the client opens the WebSocket below. `GET /config` exposes `min_humans` and
+Quick play calls `POST /matchmaking {player_id, session_id, name}`. It returns
+`room_id` and `reservation_token`; concurrent calls are serialized so they cannot
+claim the same seat. Reservations expire after 20 seconds by default. Private
+lobby creation remains a separate HTTP step: `POST /lobby {name, num_humans}`
+creates the room (409 if the name is taken, 400 if `num_humans` is out of range),
+then the client opens the WebSocket below. `GET /config` exposes `min_humans` and
 `max_humans` so the client can bound the creation form.
 
-- **Client -> server**: `join{name}`, `ready`, `audio_blob{audio_b64|text}`,
-  and `submit_vote{target}`.
+- **Client -> server**: `join{name, player_id, session_id, reservation_token}`,
+  `ready`, `audio_blob{audio_b64|text}`, and `submit_vote{target}`.
 - **Server -> client**: `room_state`, `phase_change{phase, deadline, prompt}`,
   `utterance{seat, text, audio_url, context}`, `request_input{mode, deadline,
   targets}`, `vote_result{tally, eliminated, runoff}`, `elimination{seat, role}`,
   `game_over{winner, winners, roles}`, and `system`.
 
 `deadline` is the number of remaining seconds; the client renders the countdown.
+
+Rooms, reservations, audio clips, and open sockets are currently process-local.
+Production deployment therefore requires one Uvicorn worker and one Cloud Run
+instance (`max-instances=1`). A container restart intentionally ends active MVP
+games; the client retries its WebSocket and returns to Play when the room is gone.
 
 ## Win conditions
 

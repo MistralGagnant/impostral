@@ -28,6 +28,9 @@ class Phase(str, Enum):
 class JoinMsg(BaseModel):
     type: Literal["join"]
     name: str = ""
+    player_id: str = ""
+    session_id: str = ""
+    reservation_token: str = ""
 
 
 class AudioBlobMsg(BaseModel):
@@ -73,7 +76,8 @@ def parse_client_message(raw: dict[str, Any]) -> Optional[BaseModel]:
 
 
 def srv_room_state(
-    *, seats: list[dict], phase: str, round_no: int, you: Optional[str]
+    *, seats: list[dict], phase: str, round_no: int, you: Optional[str],
+    auto_ready: bool = False,
 ) -> dict:
     return {
         "type": "room_state",
@@ -81,6 +85,7 @@ def srv_room_state(
         "phase": phase,
         "round": round_no,
         "you": you,
+        "auto_ready": auto_ready,
     }
 
 
@@ -119,14 +124,20 @@ def srv_elimination(*, seat: str, role: Optional[str]) -> dict:
     return {"type": "elimination", "seat": seat, "role": role}
 
 
-def srv_game_over(*, winner: str, winners: list[str], roles: dict[str, str]) -> dict:
+def srv_game_over(
+    *, winner: str, winners: list[str], roles: dict[str, str], message: str = ""
+) -> dict:
     return {
         "type": "game_over",
         "winner": winner,
         "winners": winners,
         "roles": roles,
+        "message": message,
     }
 
 
-def srv_system(*, text: str) -> dict:
-    return {"type": "system", "text": text}
+def srv_system(*, text: str, code: str = "") -> dict:
+    message = {"type": "system", "text": text}
+    if code:
+        message["code"] = code
+    return message

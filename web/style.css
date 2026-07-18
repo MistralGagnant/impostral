@@ -149,6 +149,9 @@ main > section { flex: 1 1 auto; min-width: 0; min-height: 0; }
   background: linear-gradient(90deg, rgba(255, 130, 5, 0.06), transparent 14%, transparent 86%, rgba(255, 130, 5, 0.06)), var(--panel-strong);
   clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
 }
+.codename-field, .play-btn, .advanced-options { grid-column: 1 / -1; }
+.play-btn { background: var(--orange) !important; color: #180900 !important; font-size: 0.92rem; }
+.play-btn:hover:not(:disabled) { background: var(--orange-bright) !important; }
 .join-console label { display: flex; min-width: 0; flex-direction: column; gap: 5px; text-align: left; }
 .join-console label > span {
   color: var(--muted);
@@ -205,6 +208,10 @@ input:focus, textarea:focus, select:focus {
 .join-console > button { grid-column: 1 / -1; }
 .hint { grid-column: 1 / -1; min-height: 1.1em; margin: 0; color: #c07a52; font-size: 0.7rem; text-align: left; }
 
+.advanced-options { border-top: 1px solid var(--line-soft); padding-top: 8px; text-align: left; }
+.advanced-options summary { color: var(--muted); cursor: pointer; font-size: 0.64rem; letter-spacing: 0.14em; list-style-position: inside; text-transform: uppercase; }
+.advanced-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; }
+.advanced-grid > button { grid-column: 1 / -1; }
 .mode-switch { grid-column: 1 / -1; display: flex; gap: 8px; }
 .mode-switch button { flex: 1; min-height: 36px; font-size: 0.66rem; opacity: 0.55; }
 .mode-switch button[aria-selected="true"] { background: var(--orange); color: #180900; opacity: 1; }
@@ -740,6 +747,7 @@ body[data-phase="game_over"] .question-frame { display: none; }
 @media (max-width: 560px) {
   .brand { height: 42px; }
   .join-console { grid-template-columns: 1fr; }
+  .advanced-grid { grid-template-columns: 1fr; }
   .join-meta { flex-wrap: wrap; justify-content: center; }
   #seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #input-controls { flex-wrap: wrap; }
