@@ -1,64 +1,144 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Impostral</title>
+  <meta name="theme-color" content="#060907" />
+  <title>Impostral — The social hunt game</title>
+  <link rel="icon" type="image/png" href="/assets/logo.png" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header>
-    <img class="brand-logo" src="/assets/impostral.png" alt="Impostral" />
-    <p class="tagline">Les IA jouent les humains. Démasquez-les avant qu’elles ne vous trompent.</p>
-  </header>
+  <div class="app-shell">
+    <div class="scanlines" aria-hidden="true"></div>
 
-  <!-- Écran de connexion -->
-  <section id="join-screen" class="panel">
-    <label>Salle
-      <input id="room-input" type="text" value="salon" autocomplete="off" />
-    </label>
-    <label>Votre nom (privé)
-      <input id="name-input" type="text" placeholder="anonyme" autocomplete="off" />
-    </label>
-    <button id="join-btn">Rejoindre</button>
-    <p id="join-hint" class="hint"></p>
-  </section>
+    <header class="hud-header">
+      <a class="brand" href="/" aria-label="Impostral — home">
+        <img src="/assets/impostral.png" alt="Impostral" />
+      </a>
+      <div class="system-status" aria-label="System status">
+        <span>Stay sharp</span>
+        <i></i><i></i><i></i>
+      </div>
+    </header>
 
-  <!-- Écran de jeu -->
-  <section id="game-screen" class="hidden">
-    <div id="phase-banner">
-      <span id="phase-name">—</span>
-      <span id="phase-timer"></span>
-    </div>
-    <p id="phase-prompt" class="prompt"></p>
-
-    <div class="game-layout">
-      <aside class="players-panel">
-        <div class="section-heading">
-          <span>Participants</span>
-          <span id="alive-count" class="counter"></span>
+    <main>
+      <!-- Join screen -->
+      <section id="join-screen" class="join-screen">
+        <div class="hero-radar" aria-hidden="true">
+          <span class="radar-ring radar-ring--outer"></span>
+          <span class="radar-ring radar-ring--inner"></span>
+          <span class="radar-axis radar-axis--x"></span>
+          <span class="radar-axis radar-axis--y"></span>
+          <span class="radar-sweep"></span>
+          <img class="radar-mascot" src="/assets/logo.png" alt="" />
         </div>
-        <div id="seats"></div>
-      </aside>
-      <main class="conversation-panel">
-        <div class="section-heading">
-          <span>Conversation</span>
-          <span class="live-indicator"><i></i> en direct</span>
-        </div>
-        <div id="transcript" aria-live="polite">
-          <div class="transcript-empty">La conversation apparaîtra ici.</div>
-        </div>
-      </main>
-    </div>
 
-    <!-- Panneau de saisie contextuel -->
-    <div id="input-panel" class="hidden">
-      <div id="input-timer" class="input-timer"></div>
-      <div id="input-controls"></div>
-    </div>
+        <div class="hero-copy">
+          <p class="eyebrow">// Social detection protocol</p>
+          <h1>Find. Vote. Hunt.</h1>
+          <p class="hero-kicker">The social hunt game.</p>
+          <p class="hero-summary">Blend in. Call them out. Stay alive.</p>
 
-    <div id="log" class="log" aria-live="polite"></div>
-  </section>
+          <div class="join-console">
+            <label>
+              <span>Room</span>
+              <input id="room-input" type="text" value="lobby" autocomplete="off" />
+            </label>
+            <label>
+              <span>Codename <small>private</small></span>
+              <input id="name-input" type="text" placeholder="anonymous" autocomplete="off" />
+            </label>
+            <button id="join-btn" type="button"><span>Start the hunt</span></button>
+            <p id="join-hint" class="hint" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <div class="role-card role-card--human">
+          <span class="role-icon role-icon--human" aria-hidden="true">◎</span>
+          <div>
+            <span>As human</span>
+            <strong>Expose AI</strong>
+          </div>
+        </div>
+
+        <div class="role-card role-card--ai">
+          <div>
+            <span>As AI</span>
+            <strong>Avoid detection</strong>
+          </div>
+          <img src="/assets/logo.png" alt="" />
+        </div>
+
+        <ol class="game-loop" aria-label="Round sequence">
+          <li><b>1</b><span>Question</span></li>
+          <li><b>2</b><span>Reply</span></li>
+          <li><b>3</b><span>Vote</span></li>
+          <li><b>4</b><span>Out</span></li>
+        </ol>
+
+        <img class="character-lineup" src="/assets/characters.png" alt="Impostral characters" />
+      </section>
+
+      <!-- Game screen -->
+      <section id="game-screen" class="game-screen hidden">
+        <div class="game-topbar">
+          <div>
+            <span class="hud-label">Active phase</span>
+            <div id="phase-banner">
+              <span id="phase-name">—</span>
+              <span id="phase-timer"></span>
+            </div>
+          </div>
+          <div class="round-status">
+            <span>Secure channel</span>
+            <i></i>
+          </div>
+        </div>
+
+        <div class="prompt-frame">
+          <span class="prompt-mark" aria-hidden="true">?</span>
+          <p id="phase-prompt" class="prompt">Waiting for protocol…</p>
+        </div>
+
+        <div class="columns">
+          <aside class="players-panel">
+            <div class="panel-title">
+              <span>Players</span>
+              <small>Signal</small>
+            </div>
+            <div id="seats"></div>
+          </aside>
+
+          <section class="transcript-panel">
+            <div class="panel-title">
+              <span>Discussion channel</span>
+              <small>Anonymous feed</small>
+            </div>
+            <div id="transcript" aria-live="polite">
+              <p class="transcript-empty">Messages will appear here.</p>
+            </div>
+          </section>
+        </div>
+
+        <!-- Contextual input panel -->
+        <div id="input-panel" class="hidden">
+          <div class="input-header">
+            <span>Your action</span>
+            <div id="input-timer" class="input-timer"></div>
+          </div>
+          <div id="input-controls"></div>
+        </div>
+
+        <div id="log" class="log" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <footer class="hud-footer">
+      <span><i></i> System online</span>
+      <span>IMPOSTRAL // PROTOCOL 01</span>
+    </footer>
+  </div>
 
   <script src="/static/audio.js"></script>
   <script src="/static/app.js"></script>

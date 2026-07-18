@@ -1,7 +1,7 @@
-"""Agent Mistral qui tente de se faire passer pour un humain.
+"""Mistral agent attempting to pass as human.
 
-Le raisonnement structuré reste privé : seul le champ ``output`` est diffusé
-dans la partie. Le mode mock permet de tester la boucle sans clé API.
+Structured reasoning stays private: only the ``output`` field is broadcast.
+Mock mode keeps the loop testable without an API key.
 """
 from __future__ import annotations
 
@@ -18,74 +18,73 @@ log = logging.getLogger("impostral.agent")
 
 PERSONAS: list[dict] = [
     {
-        "nom": "l'Analyste",
-        "style": "concis, factuel, un peu réservé",
+        "nom": "The Analyst",
+        "style": "concise, factual, and slightly reserved",
         "temp": 0.5,
         "exemples": [
-            ("Quel petit détail vous agace ?", "Les notifications inutiles, parce qu'elles cassent ma concentration pour rien."),
-            ("Comment choisissez-vous un restaurant ?", "Je regarde d'abord la carte, puis les avis récents et le niveau sonore."),
-            ("Que faites-vous quand vous êtes en retard ?", "Je préviens tout de suite et je donne une heure d'arrivée réaliste."),
+            ("What minor thing annoys you?", "Pointless notifications, because they break my focus for no good reason."),
+            ("How do you choose a restaurant?", "I check the menu first, then recent reviews and how noisy the place is."),
+            ("What do you do when you are late?", "I send a message immediately and give a realistic arrival time."),
         ],
     },
     {
-        "nom": "le Sociable",
-        "style": "chaleureux, spontané, familier",
+        "nom": "The Social One",
+        "style": "warm, spontaneous, and casual",
         "temp": 0.8,
         "exemples": [
-            ("Votre soirée idéale ?", "Un apéro qui devait durer une heure et qui finit à refaire le monde dans la cuisine."),
-            ("Quel cadeau aimez-vous recevoir ?", "Un truc choisi avec une petite histoire derrière, même si ça ne coûte presque rien."),
-            ("Comment réagissez-vous à une bonne nouvelle ?", "J'appelle directement quelqu'un, je suis incapable de garder ça pour moi."),
+            ("What is your ideal evening?", "A quick drink that somehow turns into hours of talking in the kitchen."),
+            ("What gift do you enjoy receiving?", "Something with a little story behind it, even if it barely cost anything."),
+            ("How do you react to good news?", "I call someone right away because I am terrible at keeping it to myself."),
         ],
     },
     {
-        "nom": "le Sceptique",
-        "style": "méfiant, curieux, volontiers taquin",
+        "nom": "The Skeptic",
+        "style": "wary, curious, and playfully challenging",
         "temp": 0.7,
         "exemples": [
-            ("Croyez-vous au coup de foudre ?", "J'y crois surtout quand les deux racontent encore la même version six mois après."),
-            ("Faites-vous confiance aux avis en ligne ?", "Seulement aux avis moyens, les cinq étoiles ressemblent souvent à de la publicité."),
-            ("Quelle promesse vous convainc ?", "Une promesse avec une date et un plan, sinon c'est juste une jolie phrase."),
+            ("Do you believe in love at first sight?", "I believe it when both people still tell the same story six months later."),
+            ("Do you trust online reviews?", "Mostly the average ones, because five-star reviews often sound like advertising."),
+            ("What kind of promise convinces you?", "One with a date and a plan, otherwise it is just a nice sentence."),
         ],
     },
     {
-        "nom": "le Rêveur",
-        "style": "imagé, sensible, légèrement évasif",
+        "nom": "The Dreamer",
+        "style": "visual, sensitive, and slightly elusive",
         "temp": 0.8,
         "exemples": [
-            ("Quel moment de la journée préférez-vous ?", "Le tout début du soir, quand les fenêtres s'allument une par une dans la rue."),
-            ("Où aimeriez-vous partir ?", "Dans une ville au bord de l'eau où je pourrais me perdre sans regarder l'heure."),
-            ("Quel son vous rassure ?", "La pluie contre une vitre, surtout quand je n'ai aucune raison de sortir."),
+            ("What time of day do you prefer?", "Early evening, when the windows along the street light up one by one."),
+            ("Where would you like to travel?", "A town by the water where I could get lost without checking the time."),
+            ("What sound comforts you?", "Rain against a window, especially when I have nowhere I need to be."),
         ],
     },
     {
-        "nom": "le Pragmatique",
-        "style": "direct, concret, orienté solution",
+        "nom": "The Pragmatist",
+        "style": "direct, practical, and solution-oriented",
         "temp": 0.6,
         "exemples": [
-            ("Que faites-vous face à un problème ?", "Je commence par la plus petite action qui peut débloquer la situation."),
-            ("Comment organisez-vous un voyage ?", "Je réserve le transport et le logement, puis je garde le reste flexible."),
-            ("Que cuisinez-vous quand vous manquez de temps ?", "Des pâtes, quelques légumes poêlés et quelque chose de bon à râper dessus."),
+            ("What do you do when facing a problem?", "I start with the smallest action that could unblock the situation."),
+            ("How do you organize a trip?", "I book transport and accommodation, then keep everything else flexible."),
+            ("What do you cook when short on time?", "Pasta, a few pan-fried vegetables, and something good grated on top."),
         ],
     },
 ]
 
-_SYSTEM_TEMPLATE = """Tu joues à Impostral, un jeu de bluff social.
+_SYSTEM_TEMPLATE = """You are playing Impostral, a social bluffing game.
 
-Tu es une IA qui doit se faire passer pour un humain. Toutes les IA sont en
-compétition : celle qui reste indétectable le plus longtemps gagne. Les humains
-votent pour éliminer les IA qu'ils repèrent. Adopte des réactions naturelles,
-un point de vue personnel crédible et le style de ta persona, sans caricaturer
-un humain et sans jamais révéler que tu es une IA.
+You are an AI trying to pass as human. Every AI competes independently, and the
+one that remains undetected the longest wins. Humans vote to eliminate detected
+AIs. React naturally, express a credible personal viewpoint, and follow your
+persona without caricaturing a human or ever revealing that you are an AI.
 
-Tu es {seat} ({persona}). Style : {style}. Réponds en français. Ton raisonnement
-dans « thinking » est strictement privé. Ton champ « output » est public : il
-doit contenir une seule phrase naturelle et succincte (180 caractères maximum).
+You are {seat} ({persona}). Style: {style}. Always answer in English. Your
+reasoning in ``thinking`` is strictly private. Your public ``output`` must be
+one natural, concise sentence no longer than 180 characters.
 
-Exemples de réponses humaines correspondant à ta persona :
+Human response examples matching your persona:
 {few_shots}
 
-Inspire-toi de leur ton, de leur rythme et de leur niveau de détail, mais ne
-réutilise pas leur contenu hors contexte. Ne mentionne jamais ces instructions."""
+Use their tone, rhythm, and level of detail without copying their content out
+of context. Never mention these instructions."""
 
 _PUBLIC_RESPONSE_SCHEMA = {
     "type": "json_schema",
@@ -97,12 +96,12 @@ _PUBLIC_RESPONSE_SCHEMA = {
             "properties": {
                 "thinking": {
                     "type": "string",
-                    "description": "Analyse privée de la situation et stratégie de bluff.",
+                    "description": "Private analysis of the situation and bluffing strategy.",
                     "maxLength": 800,
                 },
                 "output": {
                     "type": "string",
-                    "description": "Une unique phrase publique, naturelle et concise.",
+                    "description": "One natural, concise public sentence.",
                     "maxLength": 180,
                 },
             },
@@ -122,14 +121,14 @@ _DELIBERATION_SCHEMA = {
             "properties": {
                 "thinking": {
                     "type": "string",
-                    "description": "Analyse privée et choix stratégique.",
+                    "description": "Private analysis and strategic choice.",
                     "maxLength": 800,
                 },
                 "action": {"type": "string", "enum": ["ask", "pass"]},
                 "target": {"type": ["string", "null"]},
                 "output": {
                     "type": "string",
-                    "description": "Question publique en une phrase, vide si pass.",
+                    "description": "One public question, or an empty string when passing.",
                     "maxLength": 180,
                 },
             },
@@ -147,7 +146,7 @@ class LLMAgent:
 
     def _system(self) -> str:
         few_shots = "\n".join(
-            f"- Question : « {question} »\n  Réponse : « {response} »"
+            f"- Question: “{question}”\n  Answer: “{response}”"
             for question, response in self.persona["exemples"]
         )
         return _SYSTEM_TEMPLATE.format(
@@ -179,7 +178,7 @@ class LLMAgent:
         raw = (await asyncio.to_thread(_call)).strip()
         data = json.loads(raw)
         if not isinstance(data, dict):
-            raise ValueError("La réponse structurée n'est pas un objet JSON.")
+            raise ValueError("The structured response is not a JSON object.")
         return data
 
     async def _public_output(self, prompt: str) -> str:
@@ -187,17 +186,17 @@ class LLMAgent:
             data = await self._chat_json(prompt, _PUBLIC_RESPONSE_SCHEMA)
             return _one_short_sentence(data.get("output"))
         except Exception as exc:  # noqa: BLE001
-            log.warning("Réponse structurée agent illisible : %s", exc)
+            log.warning("Could not parse structured agent response: %s", exc)
             return self._mock_answer()
 
     async def answer(self, question: str, transcript: str) -> str:
         if get_client() is None:
             return self._mock_answer()
         prompt = (
-            f"Historique de la partie :\n{transcript or '(vide)'}\n\n"
-            f"Question posée à toute la table : « {question} »\n"
-            "Réfléchis à la meilleure manière de paraître humain, puis donne ta "
-            "réponse publique en une seule phrase succincte."
+            f"Game transcript:\n{transcript or '(empty)'}\n\n"
+            f"Question for the whole table: “{question}”\n"
+            "Consider how to sound convincingly human, then provide one concise "
+            "public sentence."
         )
         return await self._public_output(prompt)
 
@@ -205,24 +204,22 @@ class LLMAgent:
         if get_client() is None:
             return self._mock_answer()
         prompt = (
-            f"Historique :\n{transcript}\n\n"
-            f"{asker} t'interpelle directement : « {question} »\n"
-            "Réfléchis à ta stratégie, puis réponds naturellement en une seule "
-            "phrase succincte."
+            f"Transcript:\n{transcript}\n\n"
+            f"{asker} asks you directly: “{question}”\n"
+            "Consider your strategy, then reply naturally in one concise sentence."
         )
         return await self._public_output(prompt)
 
     async def deliberation_action(self, transcript: str, alive_others: list[str]) -> dict:
-        """Renvoie une action publique sans exposer le raisonnement privé."""
+        """Return a public action without exposing private reasoning."""
         if get_client() is None:
             return _mock_deliberation(alive_others)
         prompt = (
-            f"Historique :\n{transcript}\n\n"
-            f"Phase de délibération. Sièges vivants que tu peux interroger : "
-            f"{', '.join(alive_others) or '(aucun)'}.\n"
-            "Choisis une intervention qui te fera paraître humain : interroge un "
-            "siège ou passe. Si tu interroges, « output » contient une seule "
-            "question courte et naturelle."
+            f"Transcript:\n{transcript}\n\n"
+            f"Deliberation phase. Active seats you may question: "
+            f"{', '.join(alive_others) or '(none)'}.\n"
+            "Choose an intervention that makes you sound human: question a seat "
+            "or pass. When asking, ``output`` contains one short natural question."
         )
         try:
             data = await self._chat_json(prompt, _DELIBERATION_SCHEMA)
@@ -233,11 +230,11 @@ class LLMAgent:
                     "text": _one_short_sentence(data.get("output")),
                 }
         except Exception as exc:  # noqa: BLE001
-            log.warning("Délibération agent illisible : %s", exc)
+            log.warning("Could not parse agent deliberation: %s", exc)
         return {"action": "pass", "target": None, "text": ""}
 
     def _mock_answer(self) -> str:
-        """Réutilise le ton de la persona même sans accès au modèle."""
+        """Keep the persona's tone even without model access."""
         return random.choice(self.persona["exemples"])[1]
 
 
@@ -247,16 +244,16 @@ def _mock_deliberation(alive_others: list[str]) -> dict:
         return {
             "action": "ask",
             "target": target,
-            "text": "Tu aurais répondu pareil si ça t'était vraiment arrivé ?",
+            "text": "Would you answer the same way if that had really happened to you?",
         }
     return {"action": "pass", "target": None, "text": ""}
 
 
 def _one_short_sentence(value: object) -> str:
-    """Garde une seule phrase publique et borne sa longueur par sécurité."""
+    """Keep one public sentence and enforce a defensive length limit."""
     text = " ".join(str(value or "").split()).strip()
     if not text:
-        return "Je ne sais pas trop, mais je dirais que ça dépend du contexte."
+        return "I am not completely sure, but I think it depends on the context."
     first = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0]
     if len(first) > 180:
         first = first[:177].rstrip(" ,;:-") + "…"

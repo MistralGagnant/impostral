@@ -1,11 +1,11 @@
-"""Voxtral Text-to-Speech (synthèse par voix de siège).
+"""Voxtral text-to-speech using one synthetic voice per seat.
 
-Réf. doc : docs.mistral.ai/studio-api/audio/text_to_speech
-Services : Voices (profils) + Speech Generation (sortie pcm/mp3, streaming).
+Reference: docs.mistral.ai/studio-api/audio/text_to_speech
+Services: Voices profiles and speech generation.
 
-C'est ce wrapper qui réalise l'anonymisation : quel que soit l'émetteur (humain
-ou LLM), la sortie est une voix de synthèse fixée par siège. En mode mock (ou si
-l'appel échoue), renvoie None → le front n'affiche que le texte.
+This wrapper provides anonymization: human and LLM speech both use the fixed
+synthetic voice assigned to their seat. Mock mode and failed calls return None,
+leaving the web client in text-only mode.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ log = logging.getLogger("impostral.tts")
 
 
 async def synthesize(text: str, *, voice: str) -> Optional[str]:
-    """Synthétise `text` avec la voix `voice` ; renvoie une URL /audio/{id} ou None."""
+    """Synthesize text with a voice and return an /audio/{id} URL or None."""
     settings = get_settings()
     client = get_client()
 
@@ -29,8 +29,7 @@ async def synthesize(text: str, *, voice: str) -> Optional[str]:
         return None
 
     def _call() -> bytes:
-        # SDK mistralai 2.x : audio.speech.complete → SpeechResponse.audio_data
-        # (chaîne base64). `voice` est ici un id de voix preset.
+        # mistralai 2.x returns base64 in SpeechResponse.audio_data.
         resp = client.audio.speech.complete(
             model=settings.tts_model,
             voice_id=voice,
@@ -52,6 +51,6 @@ async def synthesize(text: str, *, voice: str) -> Optional[str]:
         if not audio:
             return None
         return store.put(audio, "audio/mpeg")
-    except Exception as exc:  # noqa: BLE001 — dégradation propre en texte seul
-        log.warning("TTS Voxtral a échoué, texte seul : %s", exc)
+    except Exception as exc:  # noqa: BLE001 - gracefully fall back to text only
+        log.warning("Voxtral TTS failed; continuing with text only: %s", exc)
         return None

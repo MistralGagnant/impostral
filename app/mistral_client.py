@@ -1,7 +1,7 @@
-"""Client Mistral partagé (chat / STT / TTS via l'API hébergée).
+"""Shared Mistral client for hosted chat, STT, and TTS APIs.
 
-En mode mock (pas de clé API), `get_client()` renvoie None ; les wrappers audio
-et agents savent alors se rabattre sur un comportement scripté.
+In mock mode without an API key, `get_client()` returns None and callers fall
+back to scripted or text-only behavior.
 """
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ def get_client() -> Optional["object"]:
     settings = get_settings()
     if settings.mock_mode:
         return None
-    # Import paresseux : le SDK n'est pas requis en mode mock. Le point d'entrée
-    # a changé entre les versions (2.x range le client sous mistralai.client).
+    # Lazy import: mock mode does not require the SDK. The entry point changed
+    # between SDK versions; 2.x also exposes the client under mistralai.client.
     try:
         from mistralai import Mistral  # SDK 1.x
     except ImportError:

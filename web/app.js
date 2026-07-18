@@ -1,4 +1,4 @@
-// Client de jeu Impostral : WebSocket, rendu d'état, panneaux de saisie.
+// Impostral game client: WebSocket, state rendering, and contextual inputs.
 (function () {
   const A = window.ImpostralAudio;
 
@@ -6,12 +6,11 @@
   let you = null;
   let seats = [];
 
-  // --- Éléments DOM ---
+  // --- DOM elements ---
   const $ = (id) => document.getElementById(id);
   const joinScreen = $("join-screen");
   const gameScreen = $("game-screen");
   const seatsEl = $("seats");
-  const aliveCountEl = $("alive-count");
   const transcriptEl = $("transcript");
   const logEl = $("log");
   const phaseName = $("phase-name");
@@ -20,27 +19,49 @@
   const inputPanel = $("input-panel");
   const inputControls = $("input-controls");
   const inputTimer = $("input-timer");
+  const joinBtn = $("join-btn");
+  const joinHint = $("join-hint");
 
   let phaseCountdown = null;
   let inputCountdown = null;
 
   // ------------------------------------------------------------------
-  // Connexion
+  // Connection
   // ------------------------------------------------------------------
-  $("join-btn").addEventListener("click", () => {
-    const room = ($("room-input").value || "salon").trim();
+  joinBtn.addEventListener("click", joinRoom);
+  $("name-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") joinRoom();
+  });
+  $("room-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") joinRoom();
+  });
+
+  function joinRoom() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    const room = ($("room-input").value || "lobby").trim();
     const name = ($("name-input").value || "").trim();
     const proto = location.protocol === "https:" ? "wss" : "ws";
+    joinBtn.disabled = true;
+    joinBtn.querySelector("span").textContent = "Connecting…";
+    joinHint.textContent = `Opening channel “${room}”…`;
     ws = new WebSocket(`${proto}://${location.host}/ws/${encodeURIComponent(room)}`);
 
     ws.onopen = () => ws.send(JSON.stringify({ type: "join", name }));
     ws.onmessage = (ev) => handle(JSON.parse(ev.data));
-    ws.onclose = () => addLog("Connexion fermée.");
-    ws.onerror = () => addLog("Erreur de connexion.");
-  });
+    ws.onclose = () => {
+      joinBtn.disabled = false;
+      joinBtn.querySelector("span").textContent = "Start the hunt";
+      if (!joinScreen.classList.contains("hidden")) joinHint.textContent = "Connection failed. Try again.";
+      addLog("Connection closed.");
+    };
+    ws.onerror = () => {
+      joinHint.textContent = "The channel is not responding.";
+      addLog("Connection error.");
+    };
+  }
 
   // ------------------------------------------------------------------
-  // Dispatch des messages serveur
+  // Server message dispatch
   // ------------------------------------------------------------------
   function handle(msg) {
     switch (msg.type) {
@@ -60,6 +81,7 @@
     if (msg.you) you = msg.you;
     joinScreen.classList.add("hidden");
     gameScreen.classList.remove("hidden");
+    document.body.dataset.screen = "game";
     renderSeats();
     if (you && !readySent) showReady();
   }
@@ -67,9 +89,9 @@
   let readySent = false;
   function showReady() {
     inputPanel.classList.remove("hidden");
-    inputTimer.textContent = "En attente des autres joueurs…";
+    inputTimer.textContent = "Waiting for other players…";
     inputControls.innerHTML = "";
-    const btn = mkBtn("Je suis prêt", () => {
+    const btn = mkBtn("I'm ready", () => {
       readySent = true;
       ws.send(JSON.stringify({ type: "ready" }));
       hideInput();
@@ -78,45 +100,35 @@
   }
 
   // ------------------------------------------------------------------
-  // Rendu des sièges
+  // Seat rendering
   // ------------------------------------------------------------------
   function spriteForSeat(seatId) {
-    const index = Math.max(0, seats.findIndex((s) => s.id === seatId));
-    return `/assets/characters/character_${String((index % 10) + 1).padStart(2, "0")}.png`;
+    const index = Math.max(0, seats.findIndex((seat) => seat.id === seatId));
+    const number = String((index % 10) + 1).padStart(2, "0");
+    return `/assets/characters/character_${number}.png`;
   }
 
   function renderSeats() {
     seatsEl.innerHTML = "";
-    aliveCountEl.textContent = `${seats.filter((s) => s.alive).length}/${seats.length}`;
-    for (const s of seats) {
+    for (const [index, s] of seats.entries()) {
       const div = document.createElement("div");
       div.className = "seat" + (s.id === you ? " you" : "") + (s.alive ? "" : " dead");
       div.dataset.seat = s.id;
-
-      const avatarWrap = document.createElement("div");
-      avatarWrap.className = "seat-avatar-wrap";
-      const avatar = document.createElement("img");
+      const avatar = document.createElement("span");
       avatar.className = "seat-avatar";
-      avatar.src = spriteForSeat(s.id);
-      avatar.alt = "";
-      avatarWrap.appendChild(avatar);
+      avatar.style.backgroundImage = `url("${spriteForSeat(s.id)}")`;
+      avatar.setAttribute("aria-hidden", "true");
 
-      const info = document.createElement("div");
-      info.className = "seat-info";
+      const meta = document.createElement("span");
+      meta.className = "seat-meta";
       const name = document.createElement("span");
       name.className = "seat-name";
-      name.textContent = s.id;
-      if (s.role) {
-        const role = document.createElement("span");
-        role.className = "role";
-        role.textContent = s.role === "human" ? "humain" : "IA";
-        name.appendChild(role);
-      }
-      const status = document.createElement("span");
-      status.className = "seat-status";
-      status.title = s.alive ? "En jeu" : "Éliminé";
-      info.append(name, status);
-      div.append(avatarWrap, info);
+      name.textContent = s.id + (s.id === you ? " // you" : "");
+      const role = document.createElement("span");
+      role.className = "role";
+      role.textContent = s.role ? (s.role === "human" ? "human detected" : "AI detected") : "identity masked";
+      meta.append(name, role);
+      div.append(avatar, meta);
       seatsEl.appendChild(div);
     }
   }
@@ -138,14 +150,15 @@
   }
 
   // ------------------------------------------------------------------
-  // Phases / transcript
+  // Phases and transcript
   // ------------------------------------------------------------------
   const PHASE_LABEL = {
-    lobby: "Salon", question: "Question", deliberation: "Délibération",
-    vote: "Vote", resolution: "Résolution", game_over: "Fin",
+    lobby: "Lobby", question: "Question", deliberation: "Deliberation",
+    vote: "Vote", resolution: "Resolution", game_over: "Game over",
   };
 
   function onPhaseChange(msg) {
+    document.body.dataset.phase = msg.phase;
     phaseName.textContent = PHASE_LABEL[msg.phase] || msg.phase;
     phasePrompt.textContent = msg.prompt || "";
     hideInput();
@@ -161,36 +174,35 @@
     avatar.className = "utt-avatar";
     avatar.src = spriteForSeat(msg.seat);
     avatar.alt = "";
-    const body = document.createElement("div");
-    body.className = "utt-body";
-    const heading = document.createElement("div");
+    const content = document.createElement("div");
+    content.className = "utt-content";
     const who = document.createElement("span");
     who.className = "who";
     who.textContent = msg.seat;
-    heading.appendChild(who);
+    content.appendChild(who);
     if (msg.context) {
-      const ctx = document.createElement("span");
-      ctx.className = "ctx";
-      ctx.textContent = ` (${msg.context})`;
-      heading.appendChild(ctx);
+      const context = document.createElement("span");
+      context.className = "ctx";
+      context.textContent = ` // ${msg.context}`;
+      content.appendChild(context);
     }
-    const text = document.createElement("div");
-    text.className = "utt-text";
+    const text = document.createElement("span");
+    text.className = "utterance-text";
     text.textContent = msg.text || "";
-    body.append(heading, text);
-    div.append(avatar, body);
+    content.appendChild(text);
+    div.append(avatar, content);
     transcriptEl.appendChild(div);
     transcriptEl.scrollTop = transcriptEl.scrollHeight;
     if (msg.audio_url) A.enqueue(msg.audio_url);
   }
 
   // ------------------------------------------------------------------
-  // Panneaux de saisie
+  // Input panels
   // ------------------------------------------------------------------
   function onRequestInput(msg) {
     inputPanel.classList.remove("hidden");
     inputControls.innerHTML = "";
-    startCountdown(inputTimer, msg.deadline, (h) => (inputCountdown = h), "À vous : ");
+    startCountdown(inputTimer, msg.deadline, (h) => (inputCountdown = h), "Your turn: ");
 
     if (msg.mode === "answer" || msg.mode === "reply") {
       buildSpeakPanel((payload) => {
@@ -204,24 +216,24 @@
     }
   }
 
-  // Textarea + bouton d'enregistrement micro + envoyer.
+  // Textarea, microphone recording button, and submit action.
   function buildSpeakPanel(onSend, extraNode) {
     const ta = document.createElement("textarea");
-    ta.placeholder = "Tapez… ou utilisez le micro";
-    const recBtn = mkBtn("● Micro", null, "rec");
+    ta.placeholder = "Type… or use the microphone";
+    const recBtn = mkBtn("● Mic", null, "rec");
     let recording = false;
     recBtn.addEventListener("click", async () => {
       if (!recording) {
         const ok = await A.startRecording();
         if (ok) { recording = true; recBtn.textContent = "■ Stop"; }
       } else {
-        recBtn.textContent = "● Micro";
+        recBtn.textContent = "● Mic";
         recording = false;
         const b64 = await A.stopRecording();
         recBtn.dataset.audio = b64 || "";
       }
     });
-    const sendBtn = mkBtn("Envoyer", () =>
+    const sendBtn = mkBtn("Send", () =>
       onSend({ audio_b64: recBtn.dataset.audio || null, text: ta.value.trim() })
     );
     if (extraNode) inputControls.appendChild(extraNode);
@@ -243,10 +255,10 @@
       }));
       hideInput();
     }, select);
-    // Renomme "Envoyer" et ajoute "Passer".
+    // Rename “Send” and add a skip action.
     const btns = inputControls.querySelectorAll("button");
-    btns[btns.length - 1].textContent = "Poser la question";
-    const passBtn = mkBtn("Passer", () => {
+    btns[btns.length - 1].textContent = "Ask question";
+    const passBtn = mkBtn("Skip", () => {
       ws.send(JSON.stringify({ type: "direct_question", target: "", text: "" }));
       hideInput();
     }, "secondary");
@@ -255,12 +267,12 @@
 
   function buildVotePanel(targets) {
     const label = document.createElement("span");
-    label.textContent = "Désignez le siège que vous pensez être une IA : ";
+    label.textContent = "Identify the player you believe is an AI:";
     inputControls.appendChild(label);
     const options = document.createElement("div");
     options.className = "vote-options";
     for (const t of targets) {
-      const btn = mkBtn("", () => {
+      const button = mkBtn("", () => {
         ws.send(JSON.stringify({ type: "submit_vote", target: t }));
         hideInput();
       }, "vote-card");
@@ -269,16 +281,16 @@
       avatar.alt = "";
       const name = document.createElement("span");
       name.textContent = t;
-      btn.append(avatar, name);
-      options.appendChild(btn);
+      button.append(avatar, name);
+      options.appendChild(button);
     }
     inputControls.appendChild(options);
   }
 
   function onVoteResult(msg) {
     const parts = Object.entries(msg.tally).map(([k, v]) => `${k}: ${v}`);
-    addLog("Votes — " + (parts.join(", ") || "aucun") +
-      (msg.eliminated ? ` → ${msg.eliminated} désigné.` : ""));
+    addLog("Votes — " + (parts.join(", ") || "none") +
+      (msg.eliminated ? ` → ${msg.eliminated} selected.` : ""));
   }
 
   function onElimination(msg) {
@@ -287,7 +299,8 @@
 
   function onGameOver(msg) {
     hideInput();
-    phaseName.textContent = "Fin";
+    document.body.dataset.phase = "game_over";
+    phaseName.textContent = "Game over";
     phaseTimer.textContent = "";
     seats = seats.map((s) => ({ ...s, role: msg.roles[s.id] }));
     renderSeats();
@@ -295,16 +308,17 @@
     banner.className = "winner";
     const winners = msg.winners || [];
     banner.textContent = winners.length === 1
-      ? `${winners[0]} remporte la partie !`
+      ? `${winners[0]} wins the game!`
       : winners.length > 1
-        ? `${winners.join(", ")} terminent ex æquo.`
-        : "Partie terminée.";
+        ? `${winners.join(", ")} survive and tie.`
+        : "Game over.";
     phasePrompt.textContent = "";
-    transcriptEl.parentElement.insertBefore(banner, transcriptEl.parentElement.firstChild);
+    document.querySelector(".winner")?.remove();
+    document.querySelector(".columns").before(banner);
   }
 
   // ------------------------------------------------------------------
-  // Utilitaires
+  // Utilities
   // ------------------------------------------------------------------
   function hideInput() {
     inputPanel.classList.add("hidden");
@@ -340,8 +354,4 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  }
 })();

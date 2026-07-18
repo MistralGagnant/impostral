@@ -1,13 +1,11 @@
-"""Moteur de déroulé d'une partie : QUESTION → DÉLIBÉRATION → VOTE → RÉSOLUTION.
+"""Game flow engine: QUESTION -> DELIBERATION -> VOTE -> RESOLUTION.
 
-Points clés :
-- Anonymisation : toute prise de parole passe par `_speak` → TTS voix du siège.
-- Anti-tell de timing : en phase QUESTION, les réponses sont collectées pendant
-  toute la fenêtre puis révélées groupées, dans un ordre aléatoire, avec une
-  cadence fixe (`reveal_gap_seconds`). Un LLM ne « répond » jamais plus vite qu'un
-  humain.
-- Les agents cherchent individuellement à passer pour humains.
-- Seuls les humains votent ; une accusation erronée ne les élimine pas.
+Key properties:
+- Every utterance passes through the seat's anonymized TTS voice.
+- Answers are collected for the full window and revealed in random order at a
+  fixed cadence, hiding response-time tells.
+- Agents compete independently to pass as human.
+- Only humans vote, and a wrong accusation does not eliminate a human.
 """
 from __future__ import annotations
 
@@ -41,7 +39,7 @@ class GameEngine:
             await asyncio.sleep(1.0)
             while True:
                 self.room.round_no += 1
-                await self._system(f"— Manche {self.room.round_no} —")
+                await self._system(f"— Round {self.room.round_no} —")
 
                 await self._question_phase()
                 if self._check_end():
@@ -59,8 +57,8 @@ class GameEngine:
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
-            log.exception("Le moteur de jeu a planté")
-            await self._system("Une erreur interne a interrompu la partie.")
+            log.exception("Game engine crashed")
+            await self._system("An internal error interrupted the game.")
 
     # ------------------------------------------------------------------
     # Phase QUESTION
@@ -91,7 +89,7 @@ class GameEngine:
         order = list(answers.keys())
         random.shuffle(order)
         for sid in order:
-            await self._speak(self.room.seats[sid], answers[sid], context="réponse")
+            await self._speak(self.room.seats[sid], answers[sid], context="answer")
 
     async def _collect_answer(self, seat, question: str, dur: int) -> tuple[str, str]:
         if seat.kind == "llm":
@@ -146,7 +144,7 @@ class GameEngine:
             action = await asker.agent.deliberation_action(self.room.render_transcript(), others)
             if action["action"] != "ask":
                 return False
-            target_id, q_text = action["target"], action["text"] or "Peux-tu développer ?"
+            target_id, q_text = action["target"], action["text"] or "Could you elaborate?"
         else:
             payload = await self._request_human(
                 asker, mode="deliberation", dur=min(remaining, 25), targets=others
@@ -158,7 +156,7 @@ class GameEngine:
             if target_id not in others:
                 return False
 
-        await self._speak(asker, q_text or "Peux-tu développer ?", context=f"à {target_id}")
+        await self._speak(asker, q_text or "Could you elaborate?", context=f"to {target_id}")
 
         target = self.room.seats.get(target_id)
         if target is None or not target.alive:
@@ -168,7 +166,7 @@ class GameEngine:
         else:
             payload = await self._request_human(target, mode="reply", dur=min(remaining, 25))
             reply = await self._payload_to_text(payload)
-        await self._speak(target, reply or "(silence)", context=f"répond à {asker.id}")
+        await self._speak(target, reply or "(silence)", context=f"reply to {asker.id}")
         return True
 
     # ------------------------------------------------------------------
@@ -221,15 +219,15 @@ class GameEngine:
                 role = seat.kind if self.settings.reveal_role_on_elimination else None
                 await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
                 if role:
-                    await self._system(f"{eliminated} est éliminé… c'était une IA.")
+                    await self._system(f"{eliminated} is out… they were an AI.")
                 else:
-                    await self._system(f"{eliminated} est éliminé.")
+                    await self._system(f"{eliminated} is out.")
             else:
                 await self._system(
-                    f"Mauvaise accusation : {eliminated} est humain et reste en jeu."
+                    f"Wrong accusation: {eliminated} is human and stays in the game."
                 )
         else:
-            await self._system("Personne n'est éliminé cette manche.")
+            await self._system("No one is eliminated this round.")
         await self._broadcast_state()
         await asyncio.sleep(1.5)
 
@@ -245,22 +243,22 @@ class GameEngine:
         if survivors:
             winners = survivors
             result = (
-                f"{', '.join(winners)} n'ont pas été démasqués et terminent ex æquo."
+                f"{', '.join(winners)} remained undetected and tie for the win."
                 if len(winners) > 1
-                else f"{winners[0]} n'a pas été démasqué et remporte la partie."
+                else f"{winners[0]} remained undetected and wins the game."
             )
         else:
             winners = self.eliminated_llms[-1:]  # dernière IA éliminée
             result = (
-                f"{winners[0]} est la dernière IA éliminée et remporte la partie."
+                f"{winners[0]} was the last AI eliminated and wins the game."
                 if winners
-                else "Aucune IA gagnante n'a pu être déterminée."
+                else "No winning AI could be determined."
             )
         roles = {s.id: s.kind for s in self.room.seats.values()}
         await self.room.broadcast(
             events.srv_game_over(winner="agents", winners=winners, roles=roles)
         )
-        await self._system("Partie terminée. " + result)
+        await self._system("Game over. " + result)
 
     # ------------------------------------------------------------------
     # Utilitaires
