@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 
 # Isole le module testé des dépendances de configuration non nécessaires ici.
@@ -23,6 +24,7 @@ from app.agents.llm_agent import (  # noqa: E402
     _one_short_sentence,
     _vote_schema,
 )
+from app.game import stats  # noqa: E402
 
 
 class SortieAgentTest(unittest.TestCase):
@@ -83,6 +85,35 @@ class SortieAgentTest(unittest.TestCase):
         self.assertEqual(schema["required"], ["thinking", "output"])
         self.assertEqual(schema["properties"]["output"]["enum"], targets)
         self.assertFalse(schema["additionalProperties"])
+
+    def test_les_stats_mesurent_les_victoires_individuelles(self) -> None:
+        records = [{
+            "rounds": 3,
+            "winners": ["Player A"],
+            "llms": [
+                {
+                    "model": "mistral-large-latest",
+                    "won": True,
+                    "survived": False,
+                    "eliminated_round": 3,
+                    "votes_total": 2,
+                    "votes_correct": 1,
+                },
+                {
+                    "model": "mistral-small-latest",
+                    "won": False,
+                    "survived": False,
+                    "eliminated_round": 1,
+                    "votes_total": 2,
+                    "votes_correct": 0,
+                },
+            ],
+        }]
+        with patch.object(stats, "_read_records", return_value=records):
+            models = {row["model"]: row for row in stats.aggregate()["models"]}
+        self.assertEqual(models["mistral-large-latest"]["team_win_rate"], 1.0)
+        self.assertEqual(models["mistral-small-latest"]["team_win_rate"], 0.0)
+        self.assertEqual(models["mistral-large-latest"]["vote_accuracy"], 0.5)
 
 
 if __name__ == "__main__":

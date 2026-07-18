@@ -54,6 +54,13 @@ private `thinking` and one public `output` utterance of at most 180 characters
 and two brief sentences. Outputs may be ultra-short, deflective, or strongly
 accusatory. Only `output` enters the transcript.
 
+## Model performance tracking
+
+Each finished game appends a JSON record to `IMPOSTRAL_STATS_PATH` (default
+`data/results.jsonl`). `app/game/stats.py` records each model's win, survival,
+elimination round, and competitive vote accuracy. `/stats` exposes aggregates
+and `/stats.html` renders the model comparison dashboard.
+
 ## `mistralai` SDK version caveat
 
 The project targets **`mistralai` 2.x**, whose structure differs from 1.x:
@@ -89,11 +96,12 @@ never receive role information; they only see the transcript.
 | `app/game/state_machine.py` | Phase engine, timing protection, exchange cap, and win conditions. |
 | `app/game/events.py` | WebSocket message schemas; active roles are never exposed. |
 | `app/game/questions.py` | Open-ended question bank. |
+| `app/game/stats.py` | Per-game records and per-model performance aggregation. |
 | `app/agents/llm_agent.py` | Structured LLM answers, questions, personas, few-shots, and mock fallback. |
 | `app/audio/stt.py` / `tts.py` | Voxtral wrappers with graceful fallback. |
 | `app/audio/voices.py` | Cached preset voice pool with distinct speakers. |
 | `app/audio/store.py` | Ephemeral FIFO audio store served from `/audio/{id}`. |
-| `web/` | Vanilla JS client, push-to-talk input, audio playback, and phase UI. |
+| `web/` | Radial arena, model statistics dashboard, audio, and phase UI. |
 
 ## WebSocket protocol
 
@@ -115,7 +123,6 @@ never receive role information; they only see the transcript.
 
 ## Possible improvements
 
-- Use different models per seat for balance testing.
 - Replace batch STT with `voxtral-mini-realtime-latest`.
 - Add voice cloning through `ref_audio`, or more distinct speakers.
 - Add player reconnection, multiple rooms, and a dedicated spectator screen.

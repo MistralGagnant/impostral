@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Impostral — Model performance</title>
+  <link rel="icon" type="image/png" href="/assets/logo.png" />
+  <style>
+    /* Theme-aware surface + ink + categorical slots (data-viz reference palette). */
+    :root {
+      color-scheme: light;
+      --plane:        #f9f9f7;
+      --surface-1:    #fcfcfb;
+      --text-primary: #0b0b0b;
+      --text-secondary:#52514e;
+      --muted:        #898781;
+      --grid:         #e1e0d9;
+      --baseline:     #c3c2b7;
+      --border:       rgba(11,11,11,0.10);
+      /* metric series: 1 blue, 2 green, 3 magenta */
+      --m-win:        #2a78d6;
+      --m-survival:   #008300;
+      --m-accuracy:   #e87ba4;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:where(:not([data-theme="light"])) {
+        color-scheme: dark;
+        --plane:        #0d0d0d;
+        --surface-1:    #1a1a19;
+        --text-primary: #ffffff;
+        --text-secondary:#c3c2b7;
+        --muted:        #898781;
+        --grid:         #2c2c2a;
+        --baseline:     #383835;
+        --border:       rgba(255,255,255,0.10);
+        --m-win:        #3987e5;
+        --m-survival:   #008300;
+        --m-accuracy:   #d55181;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --plane:        #0d0d0d;
+      --surface-1:    #1a1a19;
+      --text-primary: #ffffff;
+      --text-secondary:#c3c2b7;
+      --muted:        #898781;
+      --grid:         #2c2c2a;
+      --baseline:     #383835;
+      --border:       rgba(255,255,255,0.10);
+      --m-win:        #3987e5;
+      --m-survival:   #008300;
+      --m-accuracy:   #d55181;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--plane);
+      color: var(--text-primary);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 32px 20px 64px; }
+
+    header.top {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; margin-bottom: 8px; flex-wrap: wrap;
+    }
+    header.top h1 { font-size: 1.5rem; margin: 0; letter-spacing: 0.01em; }
+    .back { color: var(--m-win); text-decoration: none; font-size: 0.9rem; font-weight: 600; }
+    .back:hover { text-decoration: underline; }
+    .subtitle { color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 24px; }
+
+    .card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .card h2 { font-size: 1rem; margin: 0 0 16px; letter-spacing: 0.02em; }
+
+    /* Legend */
+    .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; font-size: 0.85rem; color: var(--text-secondary); }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+    /* Grouped horizontal bar chart */
+    .chart .model-group { margin-bottom: 18px; }
+    .chart .model-name { font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; word-break: break-word; }
+    .bar-row { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 10px; margin: 4px 0; }
+    .bar-label { font-size: 0.75rem; color: var(--muted); text-align: right; }
+    .bar-track { position: relative; background: var(--grid); border-radius: 4px; height: 20px; overflow: hidden; }
+    .bar-fill {
+      height: 100%; border-radius: 4px; min-width: 2px;
+      display: flex; align-items: center; justify-content: flex-end;
+      transition: width 0.4s ease;
+    }
+    .bar-value {
+      font-size: 0.72rem; font-weight: 700; padding: 0 6px;
+      color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    /* When the fill is too short, show the value just outside it. */
+    .bar-value.outside { color: var(--text-secondary); }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+    th:first-child, td:first-child { text-align: left; }
+    thead th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tbody td { font-variant-numeric: tabular-nums; }
+    .table-scroll { overflow-x: auto; }
+
+    .empty { color: var(--text-secondary); text-align: center; padding: 40px 0; }
+    .meta { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+    .refresh {
+      background: transparent; color: var(--text-secondary);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 12px; font-size: 0.82rem; cursor: pointer;
+    }
+    .refresh:hover { color: var(--text-primary); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <h1>Model performance</h1>
+      <div style="display:flex; gap:14px; align-items:center;">
+        <button class="refresh" id="refresh" type="button">Refresh</button>
+        <a class="back" href="/">← Back to game</a>
+      </div>
+    </header>
+    <p class="subtitle">
+      How each Mistral model performs across recorded games. Each LLM seat is
+      assigned a model from <code>IMPOSTRAL_MODEL_POOL</code>; results are logged
+      when a game ends.
+    </p>
+
+    <div id="content"></div>
+  </div>
+
+  <script>
+    const pct = (x) => (x * 100).toFixed(0) + "%";
+    const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+    const METRICS = [
+      { key: "team_win_rate",  label: "Win rate",   color: "--m-win" },
+      { key: "survival_rate",  label: "Survival",   color: "--m-survival" },
+      { key: "vote_accuracy",  label: "AI target rate",  color: "--m-accuracy" },
+    ];
+
+    function bar(value, color) {
+      const w = Math.max(0, Math.min(1, value)) * 100;
+      const short = w < 22; // Place the label outside a very short bar.
+      const val = pct(value);
+      const fill = document.createElement("div");
+      fill.className = "bar-fill";
+      fill.style.width = w + "%";
+      fill.style.background = cssVar(color);
+      if (!short) {
+        const v = document.createElement("span");
+        v.className = "bar-value";
+        v.textContent = val;
+        fill.appendChild(v);
+      }
+      const track = document.createElement("div");
+      track.className = "bar-track";
+      track.appendChild(fill);
+      if (short) {
+        const v = document.createElement("span");
+        v.className = "bar-value outside";
+        v.textContent = val;
+        v.style.position = "absolute";
+        v.style.left = "calc(" + w + "% + 6px)";
+        v.style.top = "50%";
+        v.style.transform = "translateY(-50%)";
+        track.appendChild(v);
+      }
+      return track;
+    }
+
+    function renderChart(models) {
+      const chart = document.createElement("div");
+      chart.className = "chart";
+
+      const legend = document.createElement("div");
+      legend.className = "legend";
+      for (const m of METRICS) {
+        const s = document.createElement("span");
+        const sw = document.createElement("span");
+        sw.className = "swatch";
+        sw.style.background = cssVar(m.color);
+        s.appendChild(sw);
+        s.appendChild(document.createTextNode(m.label));
+        legend.appendChild(s);
+      }
+      chart.appendChild(legend);
+
+      for (const row of models) {
+        const g = document.createElement("div");
+        g.className = "model-group";
+        const name = document.createElement("div");
+        name.className = "model-name";
+        name.textContent = row.model + "  ·  " + row.games + " game" + (row.games === 1 ? "" : "s");
+        g.appendChild(name);
+        for (const m of METRICS) {
+          const br = document.createElement("div");
+          br.className = "bar-row";
+          const lab = document.createElement("div");
+          lab.className = "bar-label";
+          lab.textContent = m.label;
+          br.appendChild(lab);
+          br.appendChild(bar(row[m.key] || 0, m.color));
+          g.appendChild(br);
+        }
+        chart.appendChild(g);
+      }
+      return chart;
+    }
+
+    function renderTable(models) {
+      const scroll = document.createElement("div");
+      scroll.className = "table-scroll";
+      const t = document.createElement("table");
+      t.innerHTML =
+        "<thead><tr>" +
+        "<th>Model</th><th>Games</th><th>Win rate</th><th>Survival</th>" +
+        "<th>Vote acc.</th><th>Votes</th><th>Avg rounds</th>" +
+        "</tr></thead>";
+      const tb = document.createElement("tbody");
+      for (const r of models) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + r.model + "</td>" +
+          "<td>" + r.games + "</td>" +
+          "<td>" + pct(r.team_win_rate) + "</td>" +
+          "<td>" + pct(r.survival_rate) + "</td>" +
+          "<td>" + pct(r.vote_accuracy) + "</td>" +
+          "<td>" + r.votes_total + "</td>" +
+          "<td>" + r.avg_rounds_survived.toFixed(1) + "</td>";
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      scroll.appendChild(t);
+      return scroll;
+    }
+
+    async function load() {
+      const content = document.getElementById("content");
+      content.textContent = "";
+      let data;
+      try {
+        const res = await fetch("/stats");
+        data = await res.json();
+      } catch (e) {
+        content.innerHTML = '<div class="card"><p class="empty">Could not load stats.</p></div>';
+        return;
+      }
+
+      if (!data.models || data.models.length === 0) {
+        content.innerHTML =
+          '<div class="card"><p class="empty">No games recorded yet.<br>' +
+          "Play a game to the end to populate this page.</p></div>";
+        return;
+      }
+
+      const c1 = document.createElement("div");
+      c1.className = "card";
+      c1.innerHTML = "<h2>Comparison</h2>";
+      c1.appendChild(renderChart(data.models));
+      content.appendChild(c1);
+
+      const c2 = document.createElement("div");
+      c2.className = "card";
+      c2.innerHTML = "<h2>Details</h2>";
+      c2.appendChild(renderTable(data.models));
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      meta.textContent = data.total_games + " game" + (data.total_games === 1 ? "" : "s") +
+        " recorded. Win rate = LLM team won; Survival = seat alive at game end; " +
+        "Vote acc. = share of this model's votes that named an actual human.";
+      c2.appendChild(meta);
+      content.appendChild(c2);
+    }
+
+    document.getElementById("refresh").addEventListener("click", load);
+    load();
+  </script>
+</body>
+</html>

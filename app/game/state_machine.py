@@ -17,7 +17,7 @@ from typing import Optional
 
 from ..audio import stt, tts
 from ..config import get_settings
-from . import events, questions
+from . import events, questions, stats
 from .events import Phase
 
 log = logging.getLogger("impostral.engine")
@@ -185,7 +185,14 @@ class GameEngine:
         tally: dict[str, int] = {}
         for res in results:
             if isinstance(res, tuple) and res[1]:
-                tally[res[1]] = tally.get(res[1], 0) + 1
+                voter_id, target_id = res
+                tally[target_id] = tally.get(target_id, 0) + 1
+                voter = self.room.seats.get(voter_id)
+                target = self.room.seats.get(target_id)
+                if voter and voter.kind == "llm":
+                    voter.votes_total += 1
+                    if target and target.kind == "llm":
+                        voter.votes_correct += 1
 
         eliminated = self._resolve_tally(tally)
         await self.room.broadcast(events.srv_vote_result(tally=tally, eliminated=eliminated))
@@ -218,6 +225,7 @@ class GameEngine:
             seat = self.room.seats[eliminated]
             if seat.kind == "llm":
                 seat.alive = False
+                seat.eliminated_round = self.room.round_no
                 self.eliminated_llms.append(seat.id)
                 role = seat.kind if self.settings.reveal_role_on_elimination else None
                 await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
@@ -258,6 +266,7 @@ class GameEngine:
                 else "No winning AI could be determined."
             )
         roles = {s.id: s.kind for s in self.room.seats.values()}
+        stats.record_game(self.room, winners)
         await self.room.broadcast(
             events.srv_game_over(winner="agents", winners=winners, roles=roles)
         )

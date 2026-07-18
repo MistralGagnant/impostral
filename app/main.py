@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .audio import store
 from .config import get_settings
-from .game import events
+from .game import events, stats
 from .game.state_machine import GameEngine
 from .rooms import rooms
 
@@ -40,6 +40,17 @@ async def public_config() -> dict:
         "max_rounds": s.max_rounds,
         "mock_mode": s.mock_mode,
     }
+
+
+@app.get("/stats")
+async def game_stats() -> dict:
+    """Return per-model performance aggregated over all recorded games."""
+    return stats.aggregate()
+
+
+@app.get("/stats.html")
+async def stats_page() -> FileResponse:
+    return FileResponse(str(WEB_DIR / "stats.html"))
 
 
 @app.get("/audio/{clip_id}")

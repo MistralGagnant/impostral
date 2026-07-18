@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     stt_model: str = "voxtral-mini-latest"
     tts_model: str = "voxtral-mini-tts-latest"
 
+    # --- Model performance tracking -------------------------------------
+    stats_path: str = "data/results.jsonl"
+
     # --- Game composition ------------------------------------------------
     num_humans: int = 2
     num_llms: int = 4

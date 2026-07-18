@@ -5,6 +5,10 @@
   let ws = null;
   let you = null;
   let seats = [];
+  let currentQuestion = "";
+  let currentRound = 0;
+  let maxRounds = 5;
+  const latestUtterances = new Map();
 
   // --- DOM elements ---
   const $ = (id) => document.getElementById(id);
@@ -21,9 +25,21 @@
   const inputTimer = $("input-timer");
   const joinBtn = $("join-btn");
   const joinHint = $("join-hint");
+  const votePanel = $("vote-panel");
+  const voteOptions = $("vote-options");
+  const submitVote = $("submit-vote");
+  const questionStatus = $("question-status");
 
   let phaseCountdown = null;
   let inputCountdown = null;
+
+  fetch("/config")
+    .then((response) => response.ok ? response.json() : null)
+    .then((config) => {
+      if (config?.max_rounds) maxRounds = config.max_rounds;
+      $("round-total").textContent = maxRounds;
+    })
+    .catch(() => {});
 
   // ------------------------------------------------------------------
   // Connection
@@ -79,9 +95,19 @@
   function onRoomState(msg) {
     seats = msg.seats;
     if (msg.you) you = msg.you;
+    if (typeof msg.round === "number" && msg.round !== currentRound) {
+      currentRound = msg.round;
+      latestUtterances.clear();
+    }
     joinScreen.classList.add("hidden");
     gameScreen.classList.remove("hidden");
     document.body.dataset.screen = "game";
+    document.body.dataset.phase = msg.phase || "lobby";
+    if (msg.phase) {
+      phaseName.textContent = PHASE_LABEL[msg.phase] || msg.phase;
+      questionStatus.textContent = PHASE_LABEL[msg.phase] || msg.phase;
+    }
+    renderMissionStatus();
     renderSeats();
     if (you && !readySent) showReady();
   }
@@ -102,10 +128,11 @@
   // ------------------------------------------------------------------
   // Seat rendering
   // ------------------------------------------------------------------
-  function spriteForSeat(seatId) {
-    const index = Math.max(0, seats.findIndex((seat) => seat.id === seatId));
-    const number = String((index % 10) + 1).padStart(2, "0");
-    return `/assets/characters/character_${number}.png`;
+  function renderMissionStatus() {
+    $("round-current").textContent = currentRound;
+    $("round-total").textContent = maxRounds;
+    $("players-alive").textContent = seats.filter((seat) => seat.alive).length;
+    $("players-total").textContent = seats.length;
   }
 
   function renderSeats() {
@@ -114,23 +141,39 @@
       const div = document.createElement("div");
       div.className = "seat" + (s.id === you ? " you" : "") + (s.alive ? "" : " dead");
       div.dataset.seat = s.id;
+      const angle = (-90 + (360 / Math.max(seats.length, 1)) * index) * (Math.PI / 180);
+      div.style.setProperty("--seat-x", `${50 + Math.cos(angle) * 41}%`);
+      div.style.setProperty("--seat-y", `${50 + Math.sin(angle) * 39}%`);
+
+      const avatarWrap = document.createElement("span");
+      avatarWrap.className = "seat-avatar-wrap";
       const avatar = document.createElement("span");
       avatar.className = "seat-avatar";
-      avatar.style.backgroundImage = `url("${spriteForSeat(s.id)}")`;
+      const avatarNumber = String((index % 10) + 1).padStart(2, "0");
+      avatar.style.backgroundImage =
+        `url("/assets/characters/character_${avatarNumber}.png")`;
       avatar.setAttribute("aria-hidden", "true");
+      const seatIndex = document.createElement("span");
+      seatIndex.className = "seat-index";
+      seatIndex.textContent = String(index + 1);
+      avatarWrap.append(avatar, seatIndex);
 
       const meta = document.createElement("span");
       meta.className = "seat-meta";
       const name = document.createElement("span");
       name.className = "seat-name";
-      name.textContent = s.id + (s.id === you ? " // you" : "");
+      name.textContent = s.id;
       const role = document.createElement("span");
       role.className = "role";
       role.textContent = s.role ? (s.role === "human" ? "human detected" : "AI detected") : "identity masked";
       meta.append(name, role);
-      div.append(avatar, meta);
+      const answer = document.createElement("span");
+      answer.className = "seat-answer";
+      answer.textContent = latestUtterances.get(s.id) || "";
+      div.append(avatarWrap, meta, answer);
       seatsEl.appendChild(div);
     }
+    renderMissionStatus();
   }
 
   function markDead(seatId, role) {
@@ -160,37 +203,50 @@
   function onPhaseChange(msg) {
     document.body.dataset.phase = msg.phase;
     phaseName.textContent = PHASE_LABEL[msg.phase] || msg.phase;
-    phasePrompt.textContent = msg.prompt || "";
+    questionStatus.textContent = PHASE_LABEL[msg.phase] || msg.phase;
+    if (msg.prompt) currentQuestion = msg.prompt;
+    phasePrompt.textContent = currentQuestion || phaseFallback(msg.phase);
+    if (msg.phase === "question") latestUtterances.clear();
     hideInput();
-    startCountdown(phaseTimer, msg.deadline, (h) => (phaseCountdown = h));
+    hideVote();
+    renderSeats();
+    if (phaseCountdown) clearInterval(phaseCountdown);
+    startCountdown(phaseTimer, msg.deadline, (h) => (phaseCountdown = h), "", true);
+  }
+
+  function phaseFallback(phase) {
+    const copy = {
+      lobby: "Waiting for all players to connect.",
+      deliberation: "Review the answers. Question anything that feels human.",
+      vote: "Choose carefully. The wrong signal can expose you.",
+      resolution: "Analyzing the vote…",
+      game_over: "The protocol is complete.",
+    };
+    return copy[phase] || "Waiting for protocol…";
   }
 
   function onUtterance(msg) {
     flashSpeaking(msg.seat);
+    latestUtterances.set(msg.seat, msg.text || "(silence)");
+    const seatAnswer = document.querySelector(`.seat[data-seat="${CSS.escape(msg.seat)}"] .seat-answer`);
+    if (seatAnswer) seatAnswer.textContent = msg.text || "(silence)";
     transcriptEl.querySelector(".transcript-empty")?.remove();
     const div = document.createElement("div");
     div.className = "utt";
-    const avatar = document.createElement("img");
-    avatar.className = "utt-avatar";
-    avatar.src = spriteForSeat(msg.seat);
-    avatar.alt = "";
-    const content = document.createElement("div");
-    content.className = "utt-content";
     const who = document.createElement("span");
     who.className = "who";
     who.textContent = msg.seat;
-    content.appendChild(who);
+    div.appendChild(who);
     if (msg.context) {
       const context = document.createElement("span");
       context.className = "ctx";
       context.textContent = ` // ${msg.context}`;
-      content.appendChild(context);
+      div.appendChild(context);
     }
     const text = document.createElement("span");
     text.className = "utterance-text";
     text.textContent = msg.text || "";
-    content.appendChild(text);
-    div.append(avatar, content);
+    div.appendChild(text);
     transcriptEl.appendChild(div);
     transcriptEl.scrollTop = transcriptEl.scrollHeight;
     if (msg.audio_url) A.enqueue(msg.audio_url);
@@ -200,6 +256,13 @@
   // Input panels
   // ------------------------------------------------------------------
   function onRequestInput(msg) {
+    if (msg.mode === "vote") {
+      hideInput();
+      buildVotePanel(msg.targets || []);
+      return;
+    }
+
+    hideVote();
     inputPanel.classList.remove("hidden");
     inputControls.innerHTML = "";
     startCountdown(inputTimer, msg.deadline, (h) => (inputCountdown = h), "Your turn: ");
@@ -211,8 +274,6 @@
       });
     } else if (msg.mode === "deliberation") {
       buildDeliberationPanel(msg.targets || []);
-    } else if (msg.mode === "vote") {
-      buildVotePanel(msg.targets || []);
     }
   }
 
@@ -266,28 +327,42 @@
   }
 
   function buildVotePanel(targets) {
-    const label = document.createElement("span");
-    label.textContent = "Identify the player you believe is an AI:";
-    inputControls.appendChild(label);
-    const options = document.createElement("div");
-    options.className = "vote-options";
+    let selectedTarget = "";
+    voteOptions.innerHTML = "";
+    submitVote.disabled = true;
     for (const t of targets) {
-      const button = mkBtn("", () => {
-        ws.send(JSON.stringify({ type: "submit_vote", target: t }));
-        hideInput();
-      }, "vote-card");
-      const avatar = document.createElement("img");
-      avatar.src = spriteForSeat(t);
-      avatar.alt = "";
-      const name = document.createElement("span");
-      name.textContent = t;
-      button.append(avatar, name);
-      options.appendChild(button);
+      const seatIndex = Math.max(0, seats.findIndex((seat) => seat.id === t));
+      const option = document.createElement("button");
+      option.className = "vote-option";
+      option.type = "button";
+      option.setAttribute("role", "radio");
+      option.setAttribute("aria-checked", "false");
+      const img = document.createElement("img");
+      img.src = `/assets/characters/character_${String((seatIndex % 10) + 1).padStart(2, "0")}.png`;
+      img.alt = "";
+      const label = document.createElement("span");
+      label.textContent = t;
+      option.append(img, label);
+      option.addEventListener("click", () => {
+        selectedTarget = t;
+        submitVote.disabled = false;
+        voteOptions.querySelectorAll(".vote-option").forEach((node) =>
+          node.setAttribute("aria-checked", String(node === option))
+        );
+      });
+      voteOptions.appendChild(option);
     }
-    inputControls.appendChild(options);
+    submitVote.onclick = () => {
+      if (!selectedTarget) return;
+      ws.send(JSON.stringify({ type: "submit_vote", target: selectedTarget }));
+      hideVote();
+    };
+    votePanel.classList.remove("hidden");
+    gameScreen.classList.add("vote-open");
   }
 
   function onVoteResult(msg) {
+    hideVote();
     const parts = Object.entries(msg.tally).map(([k, v]) => `${k}: ${v}`);
     addLog("Votes — " + (parts.join(", ") || "none") +
       (msg.eliminated ? ` → ${msg.eliminated} selected.` : ""));
@@ -299,6 +374,7 @@
 
   function onGameOver(msg) {
     hideInput();
+    hideVote();
     document.body.dataset.phase = "game_over";
     phaseName.textContent = "Game over";
     phaseTimer.textContent = "";
@@ -314,7 +390,7 @@
         : "Game over.";
     phasePrompt.textContent = "";
     document.querySelector(".winner")?.remove();
-    document.querySelector(".columns").before(banner);
+    document.querySelector(".arena-shell").appendChild(banner);
   }
 
   // ------------------------------------------------------------------
@@ -326,11 +402,21 @@
     if (inputCountdown) { clearInterval(inputCountdown); inputCountdown = null; }
   }
 
-  function startCountdown(el, seconds, store, prefix = "") {
+  function hideVote() {
+    votePanel.classList.add("hidden");
+    gameScreen.classList.remove("vote-open");
+    voteOptions.innerHTML = "";
+    submitVote.disabled = true;
+    submitVote.onclick = null;
+  }
+
+  function startCountdown(el, seconds, store, prefix = "", compact = false) {
     if (typeof seconds !== "number") { el.textContent = ""; return; }
     let remaining = Math.round(seconds);
     const tick = () => {
-      el.textContent = prefix + (remaining > 0 ? `${remaining}s` : "…");
+      el.textContent = compact
+        ? String(Math.max(0, remaining))
+        : prefix + (remaining > 0 ? `${remaining}s` : "…");
       if (remaining <= 0) clearInterval(handle);
       remaining -= 1;
     };

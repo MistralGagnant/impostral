@@ -29,6 +29,10 @@ class Seat:
     name: str = ""  # Private name, never broadcast to other players.
     agent: Optional[LLMAgent] = None
     connected: bool = False  # Human-seat connection state.
+    model: Optional[str] = None
+    votes_total: int = 0
+    votes_correct: int = 0  # Votes targeting a competing AI.
+    eliminated_round: Optional[int] = None
 
     def public(self, *, reveal_role: bool = False) -> dict:
         d = {"id": self.id, "alive": self.alive, "connected": self.connected}
@@ -80,6 +84,7 @@ class Room:
             seat = Seat(id=sid, kind=kind, voice=voice)
             if kind == "llm":
                 model = settings.agent_models[persona_idx % len(settings.agent_models)]
+                seat.model = model
                 seat.agent = LLMAgent(sid, persona_idx, model=model)
                 persona_idx += 1
             self.seats[sid] = seat
