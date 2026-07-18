@@ -1,37 +1,46 @@
 # Impostral
 
-Jeu web de déduction sociale **humains vs LLM**, dans l'esprit d'une vidéo Jubilee.
+A web-based social deduction game **humans vs LLM**, inspired by a Jubilee video.
 
-Des humains et des agents LLM (Mistral) partagent une salle. À chaque manche, une **question** est
-posée à tous, suivie d'une **délibération** où l'on s'interroge, puis d'un **vote** d'élimination.
-Le but des IA : démasquer et éliminer les humains. Le but des humains : passer pour des IA.
+Humans and LLM agents (Mistral) share a room. In each round, a **question** is asked to everyone,
+followed by a **deliberation** where players discuss, and then a **vote** to eliminate someone.
+The goal of the AIs: uncover and eliminate humans. The goal of the humans: pass as AIs.
 
-**Mécanique centrale — anonymisation par la voix** : toute prise de parole (humaine comme LLM) est
-transcrite puis resynthétisée en **voix de synthèse Voxtral fixée par siège**. Impossible de
-distinguer un humain d'une IA à l'oreille. Le tell de timing est neutralisé (réponses révélées
-groupées, en ordre aléatoire).
+**Core mechanic — voice anonymization**: any speech (human or LLM) is transcribed and resynthesized
+into **Voxtral synthetic voice fixed by seat**. It is impossible to distinguish a human from an AI by
+ear. The timing tell is neutralized (responses revealed grouped, in random order).
 
-Pile : **Voxtral** (STT + TTS) + **chat Mistral** (raisonnement des agents), backend **FastAPI +
-WebSockets**, front **JS vanilla**.
+Stack: **Voxtral** (STT + TTS) + **Mistral chat** (agent reasoning), backend **FastAPI +
+WebSockets**, front **vanilla JS**.
 
-## Démarrage
+## Getting Started
 
 ```bash
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
-# (optionnel) clé API pour l'audio réel + vrais agents :
-cp .env.example .env   # puis renseigner MISTRAL_API_KEY
+# (optional) API key for real audio + real agents:
+cp .env.example .env   # then fill in MISTRAL_API_KEY
 
 ./venv/bin/uvicorn app.main:app --reload
 ```
 
-Ouvrir http://localhost:8000 dans un onglet par joueur humain (défaut : 2 humains + 3 IA). Cliquer
-« prêt » dans chaque onglet ; la partie démarre quand tous les humains sont prêts.
+Open http://localhost:8000 in one tab per human player (default: 2 humans + 3 AIs). Click
+"ready" in each tab; the game starts when all humans are ready.
 
-**Sans clé API** : mode *mock* — agents scriptés, pas d'audio (texte seul), micro non requis. Idéal
-pour tester la boucle de jeu.
+**Without API key**: *mock* mode — scripted agents, no audio (text only), no microphone required. Ideal
+for testing the game loop.
 
-Modèles utilisés : `mistral-large-latest` (agents), `voxtral-mini-latest` (STT),
-`voxtral-mini-tts-latest` (TTS). Voir `AGENT.md` pour l'architecture, la configuration et les
-particularités du SDK `mistralai` 2.x.
+Models used: `mistral-large-latest` (agents), `voxtral-mini-latest` (STT),
+`voxtral-mini-tts-latest` (TTS). See `AGENT.md` for architecture, configuration, and
+specifics of the `mistralai` 2.x SDK.
+
+## Assets
+
+The `assets` folder contains the game's graphical resources:
+- **Characters**: Illustrations of the in-game characters.
+  ![Characters](assets/characters.png)
+- **Impostral Logo**: The main logo of the game.
+  ![Impostral Logo](assets/impostral.png)
+- **Game Icon**: The icon representing the game.
+  ![Game Icon](assets/logo.png)
