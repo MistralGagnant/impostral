@@ -165,8 +165,7 @@ class Room:
         session_id: str = "",
         reservation_token: str = "",
     ) -> Optional[Seat]:
-        """Attach or reconnect an anonymous browser session to a human seat."""
-        self._ws_all.add(ws)
+        """Attach a reserved browser session or reconnect its claimed seat."""
         now = time.time()
         self.release_stale_waiting_seats(
             now, get_settings().reconnect_grace_seconds
@@ -201,12 +200,10 @@ class Room:
                 None,
             )
 
-        # Public matchmaking seats always require their reservation ticket.
-        if seat is None and self.visibility == "private":
-            seat = self.free_human_seat(now)
         if seat is None:
             return None
 
+        self._ws_all.add(ws)
         previous_ws = self._ws_of_seat.get(seat.id)
         if previous_ws is not None and previous_ws is not ws:
             self.detach(previous_ws)
@@ -442,6 +439,100 @@ class RoomManager:
                 num_llms=num_llms,
                 visibility="private",
             )
+
+    async def create_private_and_reserve(
+        self,
+        room_id: str,
+        *,
+        num_humans: int,
+        num_llms: int,
+        player_id: str,
+        session_id: str,
+    ) -> tuple[Optional[Room], str, bool]:
+        """Atomically create a private room and reserve its creator's seat."""
+        settings = get_settings()
+        async with self._lock:
+            self._cleanup_locked()
+            existing_room = self._rooms.get(room_id)
+            if existing_room is not None:
+                if (
+                    existing_room.visibility != "private"
+                    or existing_room.status != "waiting"
+                    or existing_room.started
+                ):
+                    return None, "", False
+                existing_seat = next(
+                    (
+                        seat
+                        for seat in existing_room.seats.values()
+                        if seat.kind == "human"
+                        and seat.player_id == player_id
+                        and seat.session_id == session_id
+                        and (seat.claimed or seat.reservation_active())
+                    ),
+                    None,
+                )
+                if existing_seat is not None:
+                    return existing_room, existing_seat.reservation_token, False
+                return None, "", False
+
+            room = self.create(
+                room_id,
+                num_humans=num_humans,
+                num_llms=num_llms,
+                visibility="private",
+            )
+            if room is None:  # Defensive: the manager lock prevents a race.
+                return None, "", False
+            seat = room.free_human_seat()
+            if seat is None:
+                raise RuntimeError("Private lobby has no human seat")
+            token = room.reserve(
+                seat,
+                player_id,
+                session_id,
+                settings.matchmaking_reservation_seconds,
+            )
+            return room, token, True
+
+    async def reserve_private(
+        self, room_id: str, player_id: str, session_id: str
+    ) -> tuple[Optional[Room], str, str]:
+        """Reserve a private human seat after HTTP admission checks."""
+        settings = get_settings()
+        async with self._lock:
+            self._cleanup_locked()
+            room = self._rooms.get(room_id)
+            if room is None or room.visibility != "private":
+                return None, "", "missing"
+            if room.status != "waiting" or room.started:
+                return room, "", "started"
+
+            now = time.time()
+            existing = next(
+                (
+                    seat
+                    for seat in room.seats.values()
+                    if seat.kind == "human"
+                    and seat.player_id == player_id
+                    and seat.session_id == session_id
+                    and (seat.claimed or seat.reservation_active(now))
+                ),
+                None,
+            )
+            if existing is not None:
+                return room, existing.reservation_token, ""
+
+            seat = room.free_human_seat(now)
+            if seat is None:
+                return room, "", "full"
+            token = room.reserve(
+                seat,
+                player_id,
+                session_id,
+                settings.matchmaking_reservation_seconds,
+            )
+            return room, token, ""
 
     async def matchmake(
         self, player_id: str, session_id: str

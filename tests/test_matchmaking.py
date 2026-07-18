@@ -137,6 +137,51 @@ class MatchmakingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(private.visibility, "private")
         self.assertNotEqual(private.id, public.id)
 
+    async def test_private_seat_requires_its_http_reservation_ticket(self) -> None:
+        room, token, created = await self.manager.create_private_and_reserve(
+            "friends",
+            num_humans=2,
+            num_llms=1,
+            player_id="player_0001",
+            session_id="session_0001",
+        )
+
+        rejected_socket = object()
+        rejected = await room.attach(
+            rejected_socket,
+            "Intruder",
+            player_id="player_9999",
+            session_id="session_9999",
+        )
+        accepted = await room.attach(
+            object(),
+            "Creator",
+            player_id="player_0001",
+            session_id="session_0001",
+            reservation_token=token,
+        )
+
+        self.assertTrue(created)
+        self.assertIsNone(rejected)
+        self.assertNotIn(rejected_socket, room._ws_all)
+        self.assertIsNotNone(accepted)
+
+    async def test_private_join_reserves_a_distinct_seat(self) -> None:
+        room, creator_token, _ = await self.manager.create_private_and_reserve(
+            "friends",
+            num_humans=2,
+            num_llms=1,
+            player_id="player_0001",
+            session_id="session_0001",
+        )
+        joined_room, joiner_token, error = await self.manager.reserve_private(
+            "friends", "player_0002", "session_0002"
+        )
+
+        self.assertIs(joined_room, room)
+        self.assertEqual(error, "")
+        self.assertNotEqual(joiner_token, creator_token)
+
     async def test_disconnected_waiting_seat_is_released_after_the_grace_period(self) -> None:
         room, token, _ = await self.manager.matchmake("player_0001", "session_0001")
         socket = object()

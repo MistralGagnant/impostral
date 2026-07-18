@@ -206,6 +206,8 @@ input:focus, textarea:focus, select:focus {
 #submit-vote:disabled { cursor: not-allowed; opacity: 0.4; transform: none; }
 
 .join-console > button { grid-column: 1 / -1; }
+.turnstile-container { grid-column: 1 / -1; display: flex; justify-content: center; }
+.turnstile-container:empty { display: none; }
 .hint { grid-column: 1 / -1; min-height: 1.1em; margin: 0; color: #c07a52; font-size: 0.7rem; text-align: left; }
 
 .advanced-options { border-top: 1px solid var(--line-soft); padding-top: 8px; text-align: left; }

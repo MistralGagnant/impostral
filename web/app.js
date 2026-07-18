@@ -15,6 +15,8 @@
   let reconnectAttempts = 0;
   let reconnectTimer = null;
   let connectionSerial = 0;
+  let turnstileScriptPromise = null;
+  let turnstileWidgetId = null;
   const latestUtterances = new Map();
   // Latest ballot: seat id -> votes received, shown as badges on the arena.
   let voteTally = {};
@@ -57,6 +59,7 @@
   const playBtn = $("play-btn");
   const joinBtn = $("join-btn");
   const joinHint = $("join-hint");
+  const turnstileContainer = $("turnstile-container");
   const humansField = $("humans-field");
   const humansInput = $("humans-input");
   const modeCreate = $("mode-create");
@@ -79,7 +82,7 @@
     } catch { /* Storage may be unavailable in private browsing modes. */ }
   }
 
-  fetch("/config")
+  const configReady = fetch("/config")
     .then((response) => response.ok ? response.json() : null)
     .then((config) => {
       if (config?.max_rounds) maxRounds = config.max_rounds;
@@ -93,8 +96,95 @@
         humansInput.max = config.max_humans ?? 8;
         humansInput.value = config.num_humans ?? 3;
       }
+      return config;
     })
-    .catch(() => {});
+    .catch(() => null);
+
+  function loadTurnstile() {
+    if (window.turnstile) return Promise.resolve(window.turnstile);
+    if (turnstileScriptPromise) return turnstileScriptPromise;
+
+    turnstileScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      const timeout = setTimeout(() => reject(new Error("security_check_unavailable")), 12000);
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        clearTimeout(timeout);
+        if (window.turnstile) resolve(window.turnstile);
+        else reject(new Error("security_check_unavailable"));
+      };
+      script.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error("security_check_unavailable"));
+      };
+      document.head.appendChild(script);
+    }).catch((error) => {
+      turnstileScriptPromise = null;
+      throw error;
+    });
+    return turnstileScriptPromise;
+  }
+
+  function removeTurnstileWidget() {
+    if (turnstileWidgetId !== null && window.turnstile) {
+      try { window.turnstile.remove(turnstileWidgetId); } catch { /* Already removed. */ }
+    }
+    turnstileWidgetId = null;
+    turnstileContainer.replaceChildren();
+  }
+
+  async function requestTurnstileToken() {
+    const config = await configReady;
+    if (!config) throw new Error("security_check_unavailable");
+    if (!config.turnstile_enabled) return "";
+    if (!config.turnstile_site_key) throw new Error("security_check_unavailable");
+
+    const turnstile = await loadTurnstile();
+    removeTurnstileWidget();
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        callback(value);
+        setTimeout(removeTurnstileWidget, 0);
+      };
+      const fail = () => finish(reject, new Error("security_check_failed"));
+
+      turnstileWidgetId = turnstile.render(turnstileContainer, {
+        sitekey: config.turnstile_site_key,
+        action: "enter_game",
+        appearance: "interaction-only",
+        execution: "execute",
+        theme: "auto",
+        language: "auto",
+        retry: "auto",
+        "refresh-expired": "auto",
+        callback: (token) => finish(resolve, token),
+        "error-callback": () => { fail(); return true; },
+        "expired-callback": fail,
+        "timeout-callback": fail,
+        "unsupported-callback": fail,
+      });
+      turnstile.execute(turnstileWidgetId);
+    });
+  }
+
+  function entryErrorMessage(code, fallback) {
+    if (code === "security_check_failed") {
+      return "Security check failed. Disable any VPN or content blocker, then try again.";
+    }
+    if (code === "security_check_unavailable") {
+      return "Security check unavailable. Please try again in a moment.";
+    }
+    if (code === "exists") return "This lobby already exists. Join it instead.";
+    if (code === "missing") return "No lobby with that name exists yet.";
+    if (code === "full") return "This lobby is full.";
+    if (code === "started") return "This lobby has already started.";
+    return fallback;
+  }
 
   // ------------------------------------------------------------------
   // Lobby mode: create a new lobby or join an existing one by name.
@@ -132,9 +222,12 @@
     if (connectionActive()) return;
     gameFinished = false;
     playBtn.disabled = true;
-    playBtn.querySelector("span").textContent = "Finding a game…";
-    joinHint.textContent = "Looking for the first available game…";
+    playBtn.querySelector("span").textContent = "Checking…";
+    joinHint.textContent = "Running a quick security check…";
     try {
+      const turnstileToken = await requestTurnstileToken();
+      playBtn.querySelector("span").textContent = "Finding a game…";
+      joinHint.textContent = "Looking for the first available game…";
       const response = await fetch("/matchmaking", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,6 +235,7 @@
           player_id: playerId,
           session_id: sessionId,
           name: ($("name-input").value || "").trim(),
+          turnstile_token: turnstileToken,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -154,10 +248,13 @@
       };
       saveCurrentMatch(match);
       connect(match);
-    } catch {
+    } catch (error) {
       playBtn.disabled = false;
       playBtn.querySelector("span").textContent = "Play";
-      joinHint.textContent = "Could not find a game. Try again.";
+      joinHint.textContent = entryErrorMessage(
+        error.message,
+        "Could not find a game. Try again.",
+      );
     }
   }
 
@@ -166,40 +263,63 @@
     const room = ($("room-input").value || "lobby").trim();
     if (!room) { joinHint.textContent = "Enter a lobby name."; return; }
 
-    if (mode === "create") {
-      joinBtn.disabled = true;
-      joinHint.textContent = `Creating lobby “${room}”…`;
-      const numHumans = parseInt(humansInput.value, 10) || undefined;
-      try {
-        const res = await fetch("/lobby", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: room, num_humans: numHumans }),
-        });
-        if (!res.ok) {
-          joinBtn.disabled = false;
-          const body = await res.json().catch(() => ({}));
-          joinHint.textContent = body.error === "exists"
-            ? `Lobby “${room}” already exists. Join it instead.`
-            : body.error === "bad_humans"
-              ? `Choose between ${body.min} and ${body.max} human players.`
-              : "Could not create the lobby.";
-          return;
+    joinBtn.disabled = true;
+    joinBtn.querySelector("span").textContent = "Checking…";
+    joinHint.textContent = "Running a quick security check…";
+    try {
+      const turnstileToken = await requestTurnstileToken();
+      const creating = mode === "create";
+      joinHint.textContent = creating
+        ? `Creating lobby “${room}”…`
+        : `Joining lobby “${room}”…`;
+      const url = creating ? "/lobby" : `/lobby/${encodeURIComponent(room)}/join`;
+      const payload = {
+        player_id: playerId,
+        session_id: sessionId,
+        turnstile_token: turnstileToken,
+      };
+      if (creating) {
+        payload.name = room;
+        payload.num_humans = parseInt(humansInput.value, 10) || undefined;
+      }
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (body.error === "bad_humans") {
+          throw new Error(`bad_humans:${body.min}:${body.max}`);
         }
-      } catch {
-        joinBtn.disabled = false;
-        joinHint.textContent = "Could not reach the server.";
-        return;
+        throw new Error(body.error || "lobby_failed");
+      }
+
+      const match = {
+        room: body.name || room,
+        reservationToken: body.reservation_token,
+        quick: false,
+        name: ($("name-input").value || "").trim(),
+      };
+      saveCurrentMatch(match);
+      connect(match);
+    } catch (error) {
+      joinBtn.disabled = false;
+      joinBtn.querySelector("span").textContent = mode === "create"
+        ? "Create & enter"
+        : "Join lobby";
+      if (error.message.startsWith("bad_humans:")) {
+        const [, min, max] = error.message.split(":");
+        joinHint.textContent = `Choose between ${min} and ${max} human players.`;
+      } else if (error.message === "exists") {
+        joinHint.textContent = `Lobby “${room}” already exists. Join it instead.`;
+      } else {
+        joinHint.textContent = entryErrorMessage(
+          error.message,
+          "Could not reach the lobby. Try again.",
+        );
       }
     }
-    const match = {
-      room,
-      reservationToken: "",
-      quick: false,
-      name: ($("name-input").value || "").trim(),
-    };
-    saveCurrentMatch(match);
-    connect(match);
   }
 
   function connect(match, { reconnecting = false } = {}) {

@@ -7,17 +7,19 @@ import re
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .audio import store
 from .config import get_settings
 from .game import events, stats
 from .game.state_machine import GameEngine
 from .rooms import rooms
+from .turnstile import GAME_ENTRY_ACTION, verify_turnstile
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("impostral")
@@ -57,18 +59,30 @@ async def public_config() -> dict:
         "mock_mode": s.mock_mode,
         "tts_playback_rate": s.tts_playback_rate,
         "human_wait_seconds": s.human_wait_seconds,
+        "turnstile_enabled": s.turnstile_required,
+        "turnstile_site_key": s.turnstile_site_key if s.turnstile_required else "",
     }
 
 
 class CreateLobbyRequest(BaseModel):
     name: str
     num_humans: Optional[int] = None
+    player_id: str = ""
+    session_id: str = ""
+    turnstile_token: str = Field("", max_length=2048)
+
+
+class JoinLobbyRequest(BaseModel):
+    player_id: str
+    session_id: str
+    turnstile_token: str = Field("", max_length=2048)
 
 
 class MatchmakingRequest(BaseModel):
     player_id: str
     session_id: str
     name: str = ""
+    turnstile_token: str = Field("", max_length=2048)
 
 
 _CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -78,8 +92,44 @@ def _valid_client_id(value: str) -> bool:
     return bool(_CLIENT_ID_RE.fullmatch(value))
 
 
+async def _validate_game_entry(
+    request: Request, turnstile_token: str
+) -> Optional[JSONResponse]:
+    """Return an error response when browser admission cannot be verified."""
+    settings = get_settings()
+    if not settings.turnstile_required:
+        return None
+
+    verification = await verify_turnstile(
+        turnstile_token,
+        secret_key=settings.turnstile_secret_key,
+        expected_hostname=request.url.hostname or "",
+        expected_action=GAME_ENTRY_ACTION,
+    )
+    if verification.allowed:
+        log.info(
+            "Turnstile validation accepted: action=%s hostname=%s",
+            GAME_ENTRY_ACTION,
+            request.url.hostname,
+        )
+        return None
+
+    log.warning(
+        "Turnstile validation failed: action=%s hostname=%s reason=%s unavailable=%s",
+        GAME_ENTRY_ACTION,
+        request.url.hostname,
+        verification.reason,
+        verification.unavailable,
+    )
+    if verification.unavailable:
+        return JSONResponse(
+            {"error": "security_check_unavailable"}, status_code=503
+        )
+    return JSONResponse({"error": "security_check_failed"}, status_code=403)
+
+
 @app.post("/lobby")
-async def create_lobby(req: CreateLobbyRequest) -> JSONResponse:
+async def create_lobby(req: CreateLobbyRequest, request: Request) -> JSONResponse:
     """Create a lobby with a chosen number of human seats.
 
     Others then join by typing the lobby name; joining never creates a room.
@@ -88,6 +138,8 @@ async def create_lobby(req: CreateLobbyRequest) -> JSONResponse:
     name = req.name.strip()
     if not name:
         return JSONResponse({"error": "empty_name"}, status_code=400)
+    if not _valid_client_id(req.player_id) or not _valid_client_id(req.session_id):
+        return JSONResponse({"error": "bad_identity"}, status_code=400)
 
     num_humans = s.num_humans if req.num_humans is None else req.num_humans
     if not s.min_humans <= num_humans <= s.max_humans:
@@ -96,21 +148,64 @@ async def create_lobby(req: CreateLobbyRequest) -> JSONResponse:
             status_code=400,
         )
 
-    room = await rooms.create_private(
-        name, num_humans=num_humans, num_llms=s.num_llms
+    admission_error = await _validate_game_entry(request, req.turnstile_token)
+    if admission_error is not None:
+        return admission_error
+
+    room, token, _created = await rooms.create_private_and_reserve(
+        name,
+        num_humans=num_humans,
+        num_llms=s.num_llms,
+        player_id=req.player_id,
+        session_id=req.session_id,
     )
     if room is None:
         return JSONResponse({"error": "exists", "name": name}, status_code=409)
     return JSONResponse(
-        {"name": name, "num_humans": room.num_humans, "num_llms": room.num_llms}
+        {
+            "name": name,
+            "num_humans": room.num_humans,
+            "num_llms": room.num_llms,
+            "reservation_token": token,
+        }
     )
 
 
+@app.post("/lobby/{room_id}/join")
+async def join_lobby(
+    room_id: str, req: JoinLobbyRequest, request: Request
+) -> JSONResponse:
+    """Reserve a human seat in an existing private lobby."""
+    name = room_id.strip()
+    if not name:
+        return JSONResponse({"error": "empty_name"}, status_code=400)
+    if not _valid_client_id(req.player_id) or not _valid_client_id(req.session_id):
+        return JSONResponse({"error": "bad_identity"}, status_code=400)
+
+    admission_error = await _validate_game_entry(request, req.turnstile_token)
+    if admission_error is not None:
+        return admission_error
+
+    room, token, error = await rooms.reserve_private(
+        name, req.player_id, req.session_id
+    )
+    if error == "missing":
+        return JSONResponse({"error": "missing", "name": name}, status_code=404)
+    if error == "started":
+        return JSONResponse({"error": "started", "name": name}, status_code=409)
+    if error == "full":
+        return JSONResponse({"error": "full", "name": name}, status_code=409)
+    return JSONResponse({"name": room.id, "reservation_token": token})
+
+
 @app.post("/matchmaking")
-async def matchmaking(req: MatchmakingRequest) -> JSONResponse:
+async def matchmaking(req: MatchmakingRequest, request: Request) -> JSONResponse:
     """Reserve a seat in the oldest public lobby, creating one if needed."""
     if not _valid_client_id(req.player_id) or not _valid_client_id(req.session_id):
         return JSONResponse({"error": "bad_identity"}, status_code=400)
+    admission_error = await _validate_game_entry(request, req.turnstile_token)
+    if admission_error is not None:
+        return admission_error
     room, token, created = await rooms.matchmake(req.player_id, req.session_id)
     return JSONResponse({
         "room_id": room.id,
@@ -221,8 +316,24 @@ async def _maybe_start(room) -> None:
         await _launch_game(room, allow_partial=True)
 
 
+def _same_origin_websocket(ws: WebSocket) -> bool:
+    """Accept browser sockets only when their Origin matches the request host."""
+    origin = ws.headers.get("origin", "")
+    host = ws.headers.get("host", "")
+    parsed = urlparse(origin)
+    return (
+        parsed.scheme in {"http", "https"}
+        and bool(host)
+        and parsed.netloc.lower() == host.lower()
+    )
+
+
 @app.websocket("/ws/{room_id}")
 async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
+    if not _same_origin_websocket(ws):
+        log.warning("Rejected WebSocket with an invalid Origin header")
+        await ws.close(code=1008)
+        return
     await ws.accept()
     room = rooms.get(room_id)
     seat_id: str | None = None
@@ -250,9 +361,9 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                     reservation_token=msg.reservation_token,
                 )
                 seat_id = seat.id if seat is not None else None
-                if seat_id is None and room.visibility == "public":
+                if seat_id is None:
                     await ws.send_json(events.srv_system(
-                        text="Your matchmaking reservation expired. Click Play again.",
+                        text="Your seat reservation expired. Click Play or join again.",
                         code="reservation_expired",
                     ))
                     break
@@ -265,23 +376,20 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                         lobby_wait_remaining=room.lobby_wait_remaining(),
                     )
                 )
-                if seat_id is None:
-                    await ws.send_json(events.srv_system(text="Room full: you are spectating."))
-                else:
-                    if room.visibility == "public":
-                        room.ready_seats.add(seat_id)
-                    await room.broadcast(events.srv_system(
-                        text=f"A player joined ({seat_id})."))
-                    await room.resend_pending(seat_id)
-                    await _maybe_start(room)
-                    await room.broadcast(events.srv_room_state(
-                        seats=[s.public() for s in room.seats.values()],
-                        phase=room.phase.value,
-                        round_no=room.round_no,
-                        you=None,
-                        auto_ready=room.visibility == "public",
-                        lobby_wait_remaining=room.lobby_wait_remaining(),
-                    ))
+                if room.visibility == "public":
+                    room.ready_seats.add(seat_id)
+                await room.broadcast(events.srv_system(
+                    text=f"A player joined ({seat_id})."))
+                await room.resend_pending(seat_id)
+                await _maybe_start(room)
+                await room.broadcast(events.srv_room_state(
+                    seats=[s.public() for s in room.seats.values()],
+                    phase=room.phase.value,
+                    round_no=room.round_no,
+                    you=None,
+                    auto_ready=room.visibility == "public",
+                    lobby_wait_remaining=room.lobby_wait_remaining(),
+                ))
                 continue
 
             if seat_id is None:

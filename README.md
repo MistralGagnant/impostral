@@ -42,6 +42,13 @@ account, email address, or public player profile. The current in-memory lobby ma
 intended for a single Cloud Run instance; configure `max-instances=1` until room state is
 moved to shared infrastructure.
 
+Production game admission is protected by Cloudflare Turnstile. Set the
+unprefixed `TURNSTILE_SECRET_KEY` environment variable to enable enforcement;
+the public site key is configured in `app/config.py`. Turnstile runs only when a
+browser enters a game, and the backend exchanges a successful verification for
+a short-lived room reservation ticket. Local development remains unchallenged
+when the secret is absent; Cloud Run fails closed if the secret is missing.
+
 **Without API key**: *mock* mode — scripted agents, no audio (text only), no microphone required. Ideal
 for testing the game loop.
 

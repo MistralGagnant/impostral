@@ -39,6 +39,15 @@ and the game starts when all human seats are connected or after a configurable
 browser ID and a tab-specific session ID are stored locally for reconnection.
 There is no sign-up or public user profile.
 
+Every new game admission is protected by Cloudflare Turnstile when
+`TURNSTILE_SECRET_KEY` is configured. The browser obtains a single-use token for
+the `enter_game` action, the backend validates its result, hostname, and action,
+then issues a short-lived seat reservation. The public site key is configured as
+`turnstile_site_key` in `app/config.py`. Without the secret, enforcement is
+disabled for local development, while Cloud Run fails closed. WebSockets
+additionally require a same-origin handshake and a valid reservation ticket;
+anonymous spectators are not accepted.
+
 Named private lobbies remain available under **Private lobby options**. One
 player creates a lobby and chooses its human count; other players join using the
 same name. Private players retain the explicit “I'm ready” step. Joining never
@@ -110,6 +119,7 @@ never receive role information; they only see the transcript.
 | `app/main.py` | FastAPI app, quick matchmaking, private lobby creation, WebSocket, audio endpoint, and static web client. |
 | `app/config.py` | Models, timings, composition, and voice language settings. |
 | `app/mistral_client.py` | Shared Mistral client with robust 1.x/2.x imports. |
+| `app/turnstile.py` | Server-side Cloudflare Turnstile token verification. |
 | `app/rooms.py` | Rooms with per-lobby composition, seats, connections, and human input routing. |
 | `app/game/state_machine.py` | Phase engine, timing protection, and win conditions. |
 | `app/game/events.py` | WebSocket message schemas; active roles are never exposed. |
@@ -123,13 +133,17 @@ never receive role information; they only see the transcript.
 
 ## WebSocket protocol
 
-Quick play calls `POST /matchmaking {player_id, session_id, name}`. It returns
+Quick play calls
+`POST /matchmaking {player_id, session_id, name, turnstile_token}`. It returns
 `room_id` and `reservation_token`; concurrent calls are serialized so they cannot
 claim the same seat. Reservations expire after 20 seconds by default. Private
-lobby creation remains a separate HTTP step: `POST /lobby {name, num_humans}`
-creates the room (409 if the name is taken, 400 if `num_humans` is out of range),
-then the client opens the WebSocket below. `GET /config` exposes `min_humans` and
-`max_humans` so the client can bound the creation form.
+lobby creation calls
+`POST /lobby {name, num_humans, player_id, session_id, turnstile_token}` and
+returns the creator's reservation. Joining calls
+`POST /lobby/{room_id}/join {player_id, session_id, turnstile_token}` and returns
+another reservation. Creation returns 409 if the name is taken and 400 if
+`num_humans` is out of range. `GET /config` exposes composition bounds plus the
+public Turnstile site key when enforcement is active.
 
 - **Client -> server**: `join{name, player_id, session_id, reservation_token}`,
   `ready`, `audio_blob{audio_b64|text}`, `submit_vote{target}`, and

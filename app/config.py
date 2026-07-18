@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     stt_language: str = "en"
     tts_model: str = "voxtral-mini-tts-latest"
 
+    # --- Browser admission -----------------------------------------------
+    # The site key is public. The secret follows Cloudflare's standard
+    # unprefixed environment variable and enables enforcement when present.
+    turnstile_site_key: str = "0x4AAAAAAD4tTOpT16Ki8-cd"
+    turnstile_secret_key: str = Field("", alias="TURNSTILE_SECRET_KEY")
+    cloud_run_service: str = Field("", alias="K_SERVICE")
+
     # --- Model performance tracking -------------------------------------
     stats_path: str = "data/results.jsonl"
 
@@ -71,6 +78,16 @@ class Settings(BaseSettings):
     def mock_mode(self) -> bool:
         """Return True when no API key is set and the game should use mock mode."""
         return not self.mistral_api_key.strip()
+
+    @property
+    def turnstile_enabled(self) -> bool:
+        """Enforce Turnstile when a production secret has been configured."""
+        return bool(self.turnstile_secret_key.strip())
+
+    @property
+    def turnstile_required(self) -> bool:
+        """Fail closed on Cloud Run while keeping secret-free localhost usable."""
+        return self.turnstile_enabled or bool(self.cloud_run_service.strip())
 
     @property
     def agent_models(self) -> list[str]:

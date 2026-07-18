@@ -56,6 +56,16 @@ class WebUiTest(unittest.TestCase):
         self.assertIn(".lobby-countdown {", css)
         self.assertIn("font-size: clamp(2.8rem, 8vh, 5.4rem)", css)
 
+    def test_every_game_entry_uses_turnstile(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="turnstile-container"', html)
+        self.assertIn("requestTurnstileToken()", app_js)
+        self.assertIn('action: "enter_game"', app_js)
+        self.assertIn("turnstile_token: turnstileToken", app_js)
+        self.assertIn("/lobby/${encodeURIComponent(room)}/join", app_js)
+
 
 if __name__ == "__main__":
     unittest.main()
