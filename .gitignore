@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 web_audio_cache/
 data/
+.DS_Store

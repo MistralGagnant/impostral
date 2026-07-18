@@ -17,6 +17,16 @@ class WebUiTest(unittest.TestCase):
         self.assertIn('name="twitter:card" content="summary_large_image"', html)
         self.assertIn('type="application/ld+json"', html)
 
+    def test_favicon_is_linked_and_available_at_the_standard_url(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        main = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        favicon = ROOT / "assets" / "favicon.ico"
+
+        self.assertTrue(favicon.is_file())
+        self.assertEqual(favicon.read_bytes()[:4], b"\x00\x00\x01\x00")
+        self.assertIn('href="/favicon.ico"', html)
+        self.assertIn('@app.get("/favicon.ico", include_in_schema=False)', main)
+
     def test_crawler_files_use_canonical_urls(self) -> None:
         robots = (ROOT / "web" / "robots.txt").read_text(encoding="utf-8")
         sitemap = (ROOT / "web" / "sitemap.xml").read_text(encoding="utf-8")

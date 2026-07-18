@@ -37,6 +37,11 @@ async def index() -> FileResponse:
     return FileResponse(str(WEB_DIR / "index.html"))
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    return FileResponse(str(ASSETS_DIR / "favicon.ico"), media_type="image/x-icon")
+
+
 @app.get("/robots.txt", include_in_schema=False)
 async def robots() -> FileResponse:
     return FileResponse(str(WEB_DIR / "robots.txt"), media_type="text/plain")
