@@ -42,15 +42,23 @@
           <p class="hero-summary">Blend in. Call them out. Stay alive.</p>
 
           <div class="join-console">
+            <div class="mode-switch" role="tablist" aria-label="Lobby mode">
+              <button id="mode-create" type="button" role="tab" aria-selected="true">Create lobby</button>
+              <button id="mode-join" type="button" role="tab" aria-selected="false">Join lobby</button>
+            </div>
             <label>
-              <span>Room</span>
+              <span>Lobby name</span>
               <input id="room-input" type="text" value="lobby" autocomplete="off" />
+            </label>
+            <label id="humans-field">
+              <span>Human players <small>including you</small></span>
+              <input id="humans-input" type="number" min="1" max="8" step="1" value="2" autocomplete="off" />
             </label>
             <label>
               <span>Codename <small>private</small></span>
               <input id="name-input" type="text" placeholder="anonymous" autocomplete="off" />
             </label>
-            <button id="join-btn" type="button"><span>Start the hunt</span></button>
+            <button id="join-btn" type="button"><span>Create &amp; enter</span></button>
             <p id="join-hint" class="hint" aria-live="polite"></p>
           </div>
         </div>

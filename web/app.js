@@ -25,6 +25,10 @@
   const inputTimer = $("input-timer");
   const joinBtn = $("join-btn");
   const joinHint = $("join-hint");
+  const humansField = $("humans-field");
+  const humansInput = $("humans-input");
+  const modeCreate = $("mode-create");
+  const modeJoin = $("mode-join");
   const votePanel = $("vote-panel");
   const voteOptions = $("vote-options");
   const submitVote = $("submit-vote");
@@ -38,23 +42,76 @@
     .then((config) => {
       if (config?.max_rounds) maxRounds = config.max_rounds;
       $("round-total").textContent = maxRounds;
+      if (config) {
+        humansInput.min = config.min_humans ?? 1;
+        humansInput.max = config.max_humans ?? 8;
+        humansInput.value = config.num_humans ?? 2;
+      }
     })
     .catch(() => {});
 
   // ------------------------------------------------------------------
+  // Lobby mode: create a new lobby or join an existing one by name.
+  // ------------------------------------------------------------------
+  let mode = "create";
+  function setMode(next) {
+    mode = next;
+    const creating = mode === "create";
+    modeCreate.setAttribute("aria-selected", String(creating));
+    modeJoin.setAttribute("aria-selected", String(!creating));
+    humansField.classList.toggle("hidden", !creating);
+    joinBtn.querySelector("span").textContent = creating ? "Create & enter" : "Join lobby";
+    joinHint.textContent = "";
+  }
+  modeCreate.addEventListener("click", () => setMode("create"));
+  modeJoin.addEventListener("click", () => setMode("join"));
+
+  // ------------------------------------------------------------------
   // Connection
   // ------------------------------------------------------------------
-  joinBtn.addEventListener("click", joinRoom);
+  joinBtn.addEventListener("click", enterRoom);
   $("name-input").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") joinRoom();
+    if (event.key === "Enter") enterRoom();
   });
   $("room-input").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") joinRoom();
+    if (event.key === "Enter") enterRoom();
   });
 
-  function joinRoom() {
+  async function enterRoom() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
     const room = ($("room-input").value || "lobby").trim();
+    if (!room) { joinHint.textContent = "Enter a lobby name."; return; }
+
+    if (mode === "create") {
+      joinBtn.disabled = true;
+      joinHint.textContent = `Creating lobby “${room}”…`;
+      const numHumans = parseInt(humansInput.value, 10) || undefined;
+      try {
+        const res = await fetch("/lobby", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: room, num_humans: numHumans }),
+        });
+        if (!res.ok) {
+          joinBtn.disabled = false;
+          const body = await res.json().catch(() => ({}));
+          joinHint.textContent = body.error === "exists"
+            ? `Lobby “${room}” already exists. Join it instead.`
+            : body.error === "bad_humans"
+              ? `Choose between ${body.min} and ${body.max} human players.`
+              : "Could not create the lobby.";
+          return;
+        }
+      } catch {
+        joinBtn.disabled = false;
+        joinHint.textContent = "Could not reach the server.";
+        return;
+      }
+    }
+    connect(room);
+  }
+
+  function connect(room) {
     const name = ($("name-input").value || "").trim();
     const proto = location.protocol === "https:" ? "wss" : "ws";
     joinBtn.disabled = true;
@@ -66,8 +123,10 @@
     ws.onmessage = (ev) => handle(JSON.parse(ev.data));
     ws.onclose = () => {
       joinBtn.disabled = false;
-      joinBtn.querySelector("span").textContent = "Start the hunt";
-      if (!joinScreen.classList.contains("hidden")) joinHint.textContent = "Connection failed. Try again.";
+      joinBtn.querySelector("span").textContent = mode === "create" ? "Create & enter" : "Join lobby";
+      if (!joinScreen.classList.contains("hidden") && !joinHint.textContent) {
+        joinHint.textContent = "Connection closed. Try again.";
+      }
       addLog("Connection closed.");
     };
     ws.onerror = () => {
@@ -82,7 +141,7 @@
   function handle(msg) {
     switch (msg.type) {
       case "room_state": return onRoomState(msg);
-      case "system": return addLog(msg.text);
+      case "system": return onSystem(msg);
       case "phase_change": return onPhaseChange(msg);
       case "utterance": return onUtterance(msg);
       case "request_input": return onRequestInput(msg);
@@ -90,6 +149,13 @@
       case "elimination": return onElimination(msg);
       case "game_over": return onGameOver(msg);
     }
+  }
+
+  function onSystem(msg) {
+    // While still on the join screen, surface errors (e.g. missing lobby) in
+    // the hint line rather than the hidden in-game log.
+    if (!joinScreen.classList.contains("hidden")) joinHint.textContent = msg.text;
+    else addLog(msg.text);
   }
 
   function onRoomState(msg) {

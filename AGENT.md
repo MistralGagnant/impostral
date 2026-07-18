@@ -29,11 +29,16 @@ exposes `mock_mode`.
 # Open http://localhost:8000 in one tab per human player.
 ```
 
-Each tab occupies a free human seat. The game starts when every human clicks
-“I'm ready”. Configure composition and timings through `IMPOSTRAL_`-prefixed
-environment variables such as `IMPOSTRAL_NUM_HUMANS`, `IMPOSTRAL_NUM_LLMS`,
-`IMPOSTRAL_MAX_ROUNDS`, and `IMPOSTRAL_QUESTION_SECONDS`; see `app/config.py`.
-The first browser interaction unlocks audio playback under autoplay policies.
+One player **creates a lobby** from the join screen, choosing a lobby name and
+the number of human players; everyone else **joins** by typing that same lobby
+name. Joining never creates a room, so a wrong name is rejected. Each tab then
+occupies a free human seat, and the game starts when every human clicks “I'm
+ready”. `IMPOSTRAL_NUM_HUMANS` is the default human count offered on creation
+(bounded by `IMPOSTRAL_MIN_HUMANS`/`IMPOSTRAL_MAX_HUMANS`); the AI count comes
+from `IMPOSTRAL_NUM_LLMS`. Configure timings through `IMPOSTRAL_`-prefixed
+variables such as `IMPOSTRAL_MAX_ROUNDS` and `IMPOSTRAL_QUESTION_SECONDS`; see
+`app/config.py`. The first browser interaction unlocks audio playback under
+autoplay policies.
 
 ## Default Mistral models (`app/config.py`)
 
@@ -89,10 +94,10 @@ never receive role information; they only see the transcript.
 
 | File | Purpose |
 |------|---------|
-| `app/main.py` | FastAPI app, WebSocket, audio endpoint, and static web client. |
+| `app/main.py` | FastAPI app, `POST /lobby` creation, WebSocket, audio endpoint, and static web client. |
 | `app/config.py` | Models, timings, composition, and voice language settings. |
 | `app/mistral_client.py` | Shared Mistral client with robust 1.x/2.x imports. |
-| `app/rooms.py` | Rooms, seats, connections, and human input routing. |
+| `app/rooms.py` | Rooms with per-lobby composition, seats, connections, and human input routing. |
 | `app/game/state_machine.py` | Phase engine, timing protection, and win conditions. |
 | `app/game/events.py` | WebSocket message schemas; active roles are never exposed. |
 | `app/game/questions.py` | Open-ended question bank. |
@@ -104,6 +109,11 @@ never receive role information; they only see the transcript.
 | `web/` | Radial arena, model statistics dashboard, audio, and phase UI. |
 
 ## WebSocket protocol
+
+Lobby creation is a separate HTTP step: `POST /lobby {name, num_humans}` creates
+the room (409 if the name is taken, 400 if `num_humans` is out of range), then
+the client opens the WebSocket below. `GET /config` exposes `min_humans` and
+`max_humans` so the client can bound the creation form.
 
 - **Client -> server**: `join{name}`, `ready`, `audio_blob{audio_b64|text}`,
   and `submit_vote{target}`.

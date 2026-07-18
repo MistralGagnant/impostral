@@ -44,6 +44,10 @@ class Seat:
 @dataclass
 class Room:
     id: str
+    # Composition chosen when the lobby is created. Defaults are filled from
+    # settings by `RoomManager.create` so `setup_seats` never sees zero.
+    num_humans: int = 0
+    num_llms: int = 0
     seats: dict[str, Seat] = field(default_factory=dict)
     transcript: list[dict] = field(default_factory=list)
     phase: Phase = Phase.LOBBY
@@ -72,8 +76,8 @@ class Room:
         voices = voices_mod.get_pool()
         random.shuffle(voices)
 
-        total = settings.num_humans + settings.num_llms
-        kinds = ["human"] * settings.num_humans + ["llm"] * settings.num_llms
+        total = self.num_humans + self.num_llms
+        kinds = ["human"] * self.num_humans + ["llm"] * self.num_llms
         random.shuffle(kinds)  # Mix human and LLM seats.
 
         persona_idx = 0
@@ -200,13 +204,32 @@ class RoomManager:
     def __init__(self) -> None:
         self._rooms: dict[str, Room] = {}
 
-    def get_or_create(self, room_id: str) -> Room:
-        room = self._rooms.get(room_id)
-        if room is None:
-            room = Room(id=room_id)
-            room.setup_seats()
-            self._rooms[room_id] = room
-            log.info("Room created: %s (%d seats)", room_id, len(room.seats))
+    def create(
+        self,
+        room_id: str,
+        *,
+        num_humans: Optional[int] = None,
+        num_llms: Optional[int] = None,
+    ) -> Optional[Room]:
+        """Create a lobby with the chosen composition.
+
+        Return None when a lobby with this id already exists so callers can
+        report the collision instead of silently reusing another game.
+        """
+        if room_id in self._rooms:
+            return None
+        settings = get_settings()
+        room = Room(
+            id=room_id,
+            num_humans=settings.num_humans if num_humans is None else num_humans,
+            num_llms=settings.num_llms if num_llms is None else num_llms,
+        )
+        room.setup_seats()
+        self._rooms[room_id] = room
+        log.info(
+            "Lobby created: %s (%d humans, %d AIs)",
+            room_id, room.num_humans, room.num_llms,
+        )
         return room
 
     def get(self, room_id: str) -> Optional[Room]:

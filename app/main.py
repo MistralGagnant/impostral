@@ -4,10 +4,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from .audio import store
 from .config import get_settings
@@ -35,11 +37,44 @@ async def index() -> FileResponse:
 async def public_config() -> dict:
     s = get_settings()
     return {
-        "num_humans": s.num_humans,
+        "num_humans": s.num_humans,  # Default human count offered on creation.
         "num_llms": s.num_llms,
+        "min_humans": s.min_humans,
+        "max_humans": s.max_humans,
         "max_rounds": s.max_rounds,
         "mock_mode": s.mock_mode,
     }
+
+
+class CreateLobbyRequest(BaseModel):
+    name: str
+    num_humans: Optional[int] = None
+
+
+@app.post("/lobby")
+async def create_lobby(req: CreateLobbyRequest) -> JSONResponse:
+    """Create a lobby with a chosen number of human seats.
+
+    Others then join by typing the lobby name; joining never creates a room.
+    """
+    s = get_settings()
+    name = req.name.strip()
+    if not name:
+        return JSONResponse({"error": "empty_name"}, status_code=400)
+
+    num_humans = s.num_humans if req.num_humans is None else req.num_humans
+    if not s.min_humans <= num_humans <= s.max_humans:
+        return JSONResponse(
+            {"error": "bad_humans", "min": s.min_humans, "max": s.max_humans},
+            status_code=400,
+        )
+
+    room = rooms.create(name, num_humans=num_humans, num_llms=s.num_llms)
+    if room is None:
+        return JSONResponse({"error": "exists", "name": name}, status_code=409)
+    return JSONResponse(
+        {"name": name, "num_humans": room.num_humans, "num_llms": room.num_llms}
+    )
 
 
 @app.get("/stats")
@@ -84,7 +119,7 @@ async def _maybe_start(room) -> None:
 @app.websocket("/ws/{room_id}")
 async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
     await ws.accept()
-    room = rooms.get_or_create(room_id)
+    room = rooms.get(room_id)
     seat_id: str | None = None
 
     try:
@@ -95,6 +130,11 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                 continue
 
             if msg.type == "join":
+                if room is None:
+                    # Joining never creates a lobby: the name must exist.
+                    await ws.send_json(events.srv_system(
+                        text=f"No lobby named “{room_id}”. Create it first."))
+                    break
                 seat_id = await room.attach(ws, msg.name)
                 seats = [s.public() for s in room.seats.values()]
                 await ws.send_json(
@@ -127,10 +167,11 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
     except Exception:  # noqa: BLE001
         log.exception("Error in WebSocket loop")
     finally:
-        if seat_id:
-            room.cancel_input(seat_id)
-        room.detach(ws)
-        try:
-            await room.broadcast(events.srv_system(text="A player disconnected."))
-        except Exception:  # noqa: BLE001
-            pass
+        if room is not None:
+            if seat_id:
+                room.cancel_input(seat_id)
+            room.detach(ws)
+            try:
+                await room.broadcast(events.srv_system(text="A player disconnected."))
+            except Exception:  # noqa: BLE001
+                pass
