@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # --- Game composition ------------------------------------------------
     num_humans: int = 2
-    num_llms: int = 3
+    num_llms: int = 4
     max_rounds: int = 5
     reveal_role_on_elimination: bool = True
 
