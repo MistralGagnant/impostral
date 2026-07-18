@@ -403,7 +403,11 @@
     hideVote();
     const parts = Object.entries(msg.tally).map(([k, v]) => `${k}: ${v}`);
     addLog("Votes — " + (parts.join(", ") || "none") +
-      (msg.eliminated ? ` → ${msg.eliminated} selected.` : ""));
+      (msg.eliminated
+        ? ` → ${msg.eliminated} eliminated.`
+        : msg.runoff?.length
+          ? ` → runoff between ${msg.runoff.join(", ")}.`
+          : ""));
   }
 
   function onElimination(msg) {

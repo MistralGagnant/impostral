@@ -103,8 +103,16 @@ def srv_request_input(*, mode: str, deadline: Optional[float], targets: Optional
     return {"type": "request_input", "mode": mode, "deadline": deadline, "targets": targets}
 
 
-def srv_vote_result(*, tally: dict[str, int], eliminated: Optional[str]) -> dict:
-    return {"type": "vote_result", "tally": tally, "eliminated": eliminated}
+def srv_vote_result(
+    *, tally: dict[str, int], eliminated: Optional[str],
+    runoff: Optional[list[str]] = None,
+) -> dict:
+    return {
+        "type": "vote_result",
+        "tally": tally,
+        "eliminated": eliminated,
+        "runoff": runoff or [],
+    }
 
 
 def srv_elimination(*, seat: str, role: Optional[str]) -> dict:

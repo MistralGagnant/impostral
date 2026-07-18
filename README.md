@@ -4,8 +4,9 @@ A web-based social bluffing game **humans vs LLM**, inspired by a Jubilee video.
 
 Humans and LLM agents (Mistral) share a room. In each round, everyone answers the same
 **question**, then immediately takes part in a shared **vote** to identify an AI.
-Each AI competes independently and tries to pass as human. The winning AI is the last one eliminated
-by the humans; surviving AIs tie if the round limit is reached.
+Each AI competes independently and tries to pass as human. Every active seat votes, and a tied
+ballot triggers a runoff between the tied seats. One player is eliminated per round. The winning
+AI is the last one eliminated; surviving AIs tie if the round limit is reached.
 
 **Core mechanic — voice anonymization**: any speech (human or LLM) is transcribed and resynthesized
 into **Voxtral synthetic voice fixed by seat**. It is impossible to distinguish a human from an AI by

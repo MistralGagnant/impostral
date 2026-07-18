@@ -119,14 +119,16 @@ the client opens the WebSocket below. `GET /config` exposes `min_humans` and
   and `submit_vote{target}`.
 - **Server -> client**: `room_state`, `phase_change{phase, deadline, prompt}`,
   `utterance{seat, text, audio_url, context}`, `request_input{mode, deadline,
-  targets}`, `vote_result{tally, eliminated}`, `elimination{seat, role}`,
+  targets}`, `vote_result{tally, eliminated, runoff}`, `elimination{seat, role}`,
   `game_over{winner, winners, roles}`, and `system`.
 
 `deadline` is the number of remaining seconds; the client renders the countdown.
 
 ## Win conditions
 
-- Humans and AIs vote. Selecting a human wastes the round without eliminating them.
+- Every active human and AI casts a vote. Missing or invalid votes receive a fallback choice.
+- A first-ballot tie triggers a second vote restricted to the tied seats; a persistent tie is then broken randomly.
+- The selected seat is eliminated regardless of role, so every completed round eliminates one player.
 - Once every AI is eliminated, the last AI eliminated wins.
 - At `max_rounds`, all undetected AIs tie.
 

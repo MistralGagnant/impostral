@@ -5,7 +5,9 @@ Key properties:
 - Answers are collected for the full window and revealed in random order at a
   fixed cadence, hiding response-time tells.
 - Agents compete independently to pass as human.
-- Humans and agents vote; selecting a human wastes the round without eliminating them.
+- Every active human and agent casts a vote.
+- A tied first ballot triggers a runoff restricted to the tied candidates.
+- Exactly one seat is eliminated after each vote phase.
 """
 from __future__ import annotations
 
@@ -107,41 +109,92 @@ class GameEngine:
         await self._broadcast_state()
 
         voters = self.room.alive_seats()
-        tasks = [asyncio.ensure_future(self._collect_vote(s, dur)) for s in voters]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        tally = await self._collect_ballot(voters, dur)
+        leaders = self._leaders(tally)
 
-        tally: dict[str, int] = {}
-        for res in results:
-            if isinstance(res, tuple) and res[1]:
-                voter_id, target_id = res
-                tally[target_id] = tally.get(target_id, 0) + 1
-                voter = self.room.seats.get(voter_id)
-                target = self.room.seats.get(target_id)
-                if voter and voter.kind == "llm":
-                    voter.votes_total += 1
-                    if target and target.kind == "llm":
-                        voter.votes_correct += 1
+        if len(leaders) > 1:
+            await self.room.broadcast(
+                events.srv_vote_result(tally=tally, eliminated=None, runoff=leaders)
+            )
+            await self._system(
+                f"Tie between {', '.join(leaders)}. Runoff vote: tied seats only."
+            )
+            await self.room.broadcast(
+                events.srv_phase_change(
+                    phase=Phase.VOTE.value,
+                    deadline=dur,
+                    prompt=f"Runoff: vote between {', '.join(leaders)}.",
+                )
+            )
+            tally = await self._collect_ballot(voters, dur, candidates=leaders)
+            leaders = self._leaders(tally)
 
-        eliminated = self._resolve_tally(tally)
+        # A persistent runoff tie is broken only after everyone has voted again.
+        eliminated = (
+            leaders[0]
+            if len(leaders) == 1
+            else random.choice(leaders) if leaders else None
+        )
         await self.room.broadcast(events.srv_vote_result(tally=tally, eliminated=eliminated))
         self._pending_eliminated = eliminated
 
-    async def _collect_vote(self, seat, dur: int) -> tuple[str, Optional[str]]:
-        others = self.room.alive_ids(exclude=seat.id)
-        if seat.kind == "llm":
-            target = await seat.agent.vote(self.room.render_transcript(), others)
-            return seat.id, target if target in others else None
-        payload = await self._request_human(seat, mode="vote", dur=dur, targets=others)
-        target = payload.get("target") if payload else None
-        return seat.id, target if target in others else None
+    async def _collect_ballot(
+        self, voters: list, dur: int, candidates: Optional[list[str]] = None
+    ) -> dict[str, int]:
+        tasks = [
+            asyncio.ensure_future(self._collect_vote(seat, dur, candidates=candidates))
+            for seat in voters
+        ]
+        results = await asyncio.gather(*tasks)
+
+        tally: dict[str, int] = {}
+        for voter_id, target_id in results:
+            if target_id is None:
+                continue
+            tally[target_id] = tally.get(target_id, 0) + 1
+            voter = self.room.seats.get(voter_id)
+            target = self.room.seats.get(target_id)
+            if voter and voter.kind == "llm":
+                voter.votes_total += 1
+                if target and target.kind == "llm":
+                    voter.votes_correct += 1
+        return tally
+
+    async def _collect_vote(
+        self, seat, dur: int, candidates: Optional[list[str]] = None
+    ) -> tuple[str, Optional[str]]:
+        alive_others = self.room.alive_ids(exclude=seat.id)
+        eligible = (
+            [target for target in candidates if target in alive_others]
+            if candidates is not None
+            else alive_others
+        )
+        if not eligible:
+            return seat.id, None
+
+        target = None
+        try:
+            if seat.kind == "llm":
+                target = await seat.agent.vote(self.room.render_transcript(), eligible)
+            else:
+                payload = await self._request_human(
+                    seat, mode="vote", dur=dur, targets=eligible
+                )
+                target = payload.get("target") if payload else None
+        except Exception:  # noqa: BLE001
+            log.exception("Vote collection failed for %s", seat.id)
+
+        if target not in eligible:
+            target = random.choice(eligible)
+            log.info("Assigned fallback vote for %s to %s", seat.id, target)
+        return seat.id, target
 
     @staticmethod
-    def _resolve_tally(tally: dict[str, int]) -> Optional[str]:
+    def _leaders(tally: dict[str, int]) -> list[str]:
         if not tally:
-            return None
+            return []
         top = max(tally.values())
-        leaders = [sid for sid, n in tally.items() if n == top]
-        return random.choice(leaders)  # égalité tranchée au hasard
+        return [sid for sid, votes in tally.items() if votes == top]
 
     # ------------------------------------------------------------------
     # Phase RÉSOLUTION
@@ -151,20 +204,18 @@ class GameEngine:
         eliminated = getattr(self, "_pending_eliminated", None)
         if eliminated and eliminated in self.room.seats:
             seat = self.room.seats[eliminated]
+            seat.alive = False
+            seat.eliminated_round = self.room.round_no
             if seat.kind == "llm":
-                seat.alive = False
-                seat.eliminated_round = self.room.round_no
                 self.eliminated_llms.append(seat.id)
-                role = seat.kind if self.settings.reveal_role_on_elimination else None
-                await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
-                if role:
-                    await self._system(f"{eliminated} is out… they were an AI.")
-                else:
-                    await self._system(f"{eliminated} is out.")
+            role = seat.kind if self.settings.reveal_role_on_elimination else None
+            await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
+            if role == "llm":
+                await self._system(f"{eliminated} is out… they were an AI.")
+            elif role == "human":
+                await self._system(f"{eliminated} is out… they were human.")
             else:
-                await self._system(
-                    f"The vote missed: {eliminated} is human and stays in the game."
-                )
+                await self._system(f"{eliminated} is out.")
         else:
             await self._system("No one is eliminated this round.")
         await self._broadcast_state()
@@ -174,7 +225,7 @@ class GameEngine:
     # Fin de partie
     # ------------------------------------------------------------------
     def _check_end(self) -> bool:
-        return not self.room.llms_alive()
+        return not self.room.llms_alive() or len(self.room.alive_seats()) <= 1
 
     async def _game_over(self) -> None:
         self.room.phase = Phase.GAME_OVER
