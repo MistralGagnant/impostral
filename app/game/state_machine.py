@@ -15,6 +15,7 @@ import asyncio
 import base64
 import logging
 import random
+import time
 from typing import Optional
 
 from ..audio import stt, tts
@@ -59,6 +60,9 @@ class GameEngine:
             raise
         except Exception:  # noqa: BLE001
             log.exception("Game engine crashed")
+            self.room.status = "finished"
+            self.room.finished_at = time.time()
+            self.room.updated_at = self.room.finished_at
             await self._system("An internal error interrupted the game.")
 
     # ------------------------------------------------------------------
@@ -229,6 +233,9 @@ class GameEngine:
 
     async def _game_over(self) -> None:
         self.room.phase = Phase.GAME_OVER
+        self.room.status = "finished"
+        self.room.finished_at = time.time()
+        self.room.updated_at = self.room.finished_at
         survivors = [s.id for s in self.room.llms_alive()]
         if survivors:
             winners = survivors

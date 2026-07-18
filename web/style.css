@@ -46,6 +46,9 @@ main { position: relative; z-index: 1; }
 .hero-kicker { margin: 18px 0px 3px; color: var(--orange-bright); font-size: clamp(1rem, 1.8vw, 1.45rem); font-weight: 800; letter-spacing: 0.09em; }
 .hero-summary { margin: 0px auto; color: rgb(163, 164, 159); font-size: clamp(0.78rem, 1.4vw, 1rem); }
 .join-console { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(580px, 100%); margin: 28px auto 0px; padding: 16px; border: 1px solid rgba(255, 104, 0, 0.48); background: linear-gradient(90deg, rgba(255, 104, 0, 0.07), transparent 12%, transparent 88%, rgba(255, 104, 0, 0.07)), rgba(2, 5, 3, 0.9); box-shadow: rgba(255, 104, 0, 0.08) 0px 0px 28px, rgba(0, 0, 0, 0.7) 0px 0px 30px inset; clip-path: polygon(8px 0px, calc(100% - 8px) 0px, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0px calc(100% - 8px), 0px 8px); }
+.codename-field, .play-btn, .advanced-options { grid-column: 1 / -1; }
+.play-btn { background: var(--orange) !important; color: rgb(22, 8, 0) !important; font-size: 0.92rem; }
+.play-btn:hover:not(:disabled) { background: var(--orange-bright) !important; }
 .join-console label { display: flex; min-width: 0px; flex-direction: column; gap: 5px; text-align: left; }
 .join-console label > span { color: rgb(138, 143, 137); font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase; }
 .join-console small { color: rgb(85, 90, 85); }
@@ -60,6 +63,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--orange); box-sha
 .join-console button:hover, #input-controls button:hover { background: var(--orange); color: rgb(22, 8, 0); box-shadow: rgba(255, 104, 0, 0.25) 0px 0px 24px; transform: translateY(-1px); }
 .join-console button:disabled, #input-controls button:disabled { cursor: not-allowed; opacity: 0.45; transform: none; }
 .hint { grid-column: 1 / -1; min-height: 1.1em; margin: 0px; color: rgb(156, 101, 80); font-size: 0.7rem; text-align: left; }
+.advanced-options { border-top: 1px solid var(--line-soft); padding-top: 8px; text-align: left; }
+.advanced-options summary { color: var(--muted); cursor: pointer; font-size: 0.64rem; letter-spacing: 0.14em; list-style-position: inside; text-transform: uppercase; }
+.advanced-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; }
+.advanced-grid > button { grid-column: 1 / -1; }
 .mode-switch { grid-column: 1 / -1; display: flex; gap: 8px; }
 .mode-switch button { flex: 1 1 0; min-height: 38px; grid-column: auto; font-size: 0.66rem; opacity: 0.55; }
 .mode-switch button::before, .mode-switch button::after { content: ""; margin: 0px; }
@@ -219,6 +226,7 @@ body[data-phase="vote"] .arena-feed { opacity: 1; }
   .hero-copy h1 { font-size: clamp(2.75rem, 14vw, 4.4rem); white-space: normal; }
   .hero-summary { max-width: 440px; }
   .join-console { grid-template-columns: 1fr; }
+  .advanced-grid { grid-template-columns: 1fr; }
   .join-console button, .hint { grid-column: 1; }
   .role-card { min-height: 90px; }
   .game-loop { margin: 16px 0px 0px; }

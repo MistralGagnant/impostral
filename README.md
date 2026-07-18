@@ -27,8 +27,15 @@ cp .env.example .env   # then fill in MISTRAL_API_KEY
 ./venv/bin/uvicorn app.main:app --reload
 ```
 
-Open http://localhost:8000 in one tab per human player (default: 2 humans + 4 AIs). Click
-"ready" in each tab; the game starts when all humans are ready.
+Open http://localhost:8000 and click **Play**. Quick play joins the oldest public lobby with
+a free human seat, or creates one with the default composition (2 humans + 4 AIs). Public
+games start automatically when all human seats are connected. Named private lobbies remain
+available under **Private lobby options** and keep the explicit ready step.
+
+Quick play uses anonymous browser and tab identifiers stored locally. There is no sign-up,
+account, email address, or public player profile. The current in-memory lobby manager is
+intended for a single Cloud Run instance; configure `max-instances=1` until room state is
+moved to shared infrastructure.
 
 **Without API key**: *mock* mode — scripted agents, no audio (text only), no microphone required. Ideal
 for testing the game loop.

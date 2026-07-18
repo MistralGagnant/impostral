@@ -8,7 +8,35 @@
   let currentQuestion = "";
   let currentRound = 0;
   let maxRounds = 5;
+  let readySent = false;
+  let gameFinished = false;
+  let currentMatch = null;
+  let reconnectAttempts = 0;
+  let reconnectTimer = null;
+  let connectionSerial = 0;
   const latestUtterances = new Map();
+
+  function randomId() {
+    return globalThis.crypto?.randomUUID?.() ||
+      `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+  }
+
+  function persistentId(storage, key) {
+    try {
+      let value = storage.getItem(key);
+      if (!value) {
+        value = randomId();
+        storage.setItem(key, value);
+      }
+      return value;
+    } catch {
+      return randomId();
+    }
+  }
+
+  // Anonymous technical identifiers only: no account or personal profile.
+  const playerId = persistentId(localStorage, "impostral.playerId");
+  const sessionId = persistentId(sessionStorage, "impostral.sessionId");
 
   // --- DOM elements ---
   const $ = (id) => document.getElementById(id);
@@ -23,6 +51,7 @@
   const inputPanel = $("input-panel");
   const inputControls = $("input-controls");
   const inputTimer = $("input-timer");
+  const playBtn = $("play-btn");
   const joinBtn = $("join-btn");
   const joinHint = $("join-hint");
   const humansField = $("humans-field");
@@ -37,6 +66,20 @@
   let phaseCountdown = null;
   let inputCountdown = null;
 
+  try {
+    currentMatch = JSON.parse(sessionStorage.getItem("impostral.activeMatch")) || null;
+  } catch {
+    currentMatch = null;
+  }
+
+  function saveCurrentMatch(match) {
+    currentMatch = match;
+    try {
+      if (match) sessionStorage.setItem("impostral.activeMatch", JSON.stringify(match));
+      else sessionStorage.removeItem("impostral.activeMatch");
+    } catch { /* Storage may be unavailable in private browsing modes. */ }
+  }
+
   fetch("/config")
     .then((response) => response.ok ? response.json() : null)
     .then((config) => {
@@ -48,7 +91,10 @@
         humansInput.value = config.num_humans ?? 2;
       }
     })
-    .catch(() => {});
+    .catch(() => {})
+    .finally(() => {
+      if (currentMatch?.room) connect(currentMatch, { reconnecting: true });
+    });
 
   // ------------------------------------------------------------------
   // Lobby mode: create a new lobby or join an existing one by name.
@@ -69,16 +115,54 @@
   // ------------------------------------------------------------------
   // Connection
   // ------------------------------------------------------------------
+  playBtn.addEventListener("click", play);
   joinBtn.addEventListener("click", enterRoom);
   $("name-input").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") enterRoom();
+    if (event.key === "Enter") play();
   });
   $("room-input").addEventListener("keydown", (event) => {
     if (event.key === "Enter") enterRoom();
   });
 
+  function connectionActive() {
+    return ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING);
+  }
+
+  async function play() {
+    if (connectionActive()) return;
+    gameFinished = false;
+    playBtn.disabled = true;
+    playBtn.querySelector("span").textContent = "Finding a game…";
+    joinHint.textContent = "Looking for the first available game…";
+    try {
+      const response = await fetch("/matchmaking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          player_id: playerId,
+          session_id: sessionId,
+          name: ($("name-input").value || "").trim(),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "matchmaking_failed");
+      const match = {
+        room: body.room_id,
+        reservationToken: body.reservation_token,
+        quick: true,
+        name: ($("name-input").value || "").trim(),
+      };
+      saveCurrentMatch(match);
+      connect(match);
+    } catch {
+      playBtn.disabled = false;
+      playBtn.querySelector("span").textContent = "Play";
+      joinHint.textContent = "Could not find a game. Try again.";
+    }
+  }
+
   async function enterRoom() {
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    if (connectionActive()) return;
     const room = ($("room-input").value || "lobby").trim();
     if (!room) { joinHint.textContent = "Enter a lobby name."; return; }
 
@@ -108,31 +192,88 @@
         return;
       }
     }
-    connect(room);
+    const match = {
+      room,
+      reservationToken: "",
+      quick: false,
+      name: ($("name-input").value || "").trim(),
+    };
+    saveCurrentMatch(match);
+    connect(match);
   }
 
-  function connect(room) {
-    const name = ($("name-input").value || "").trim();
+  function connect(match, { reconnecting = false } = {}) {
+    if (connectionActive()) return;
+    const serial = ++connectionSerial;
     const proto = location.protocol === "https:" ? "wss" : "ws";
+    playBtn.disabled = true;
     joinBtn.disabled = true;
     joinBtn.querySelector("span").textContent = "Connecting…";
-    joinHint.textContent = `Opening channel “${room}”…`;
-    ws = new WebSocket(`${proto}://${location.host}/ws/${encodeURIComponent(room)}`);
+    playBtn.querySelector("span").textContent = reconnecting ? "Reconnecting…" : "Connecting…";
+    joinHint.textContent = reconnecting
+      ? "Reconnecting to your game…"
+      : `Opening channel “${match.room}”…`;
+    ws = new WebSocket(`${proto}://${location.host}/ws/${encodeURIComponent(match.room)}`);
 
-    ws.onopen = () => ws.send(JSON.stringify({ type: "join", name }));
-    ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+    ws.onopen = () => {
+      reconnectAttempts = 0;
+      ws.send(JSON.stringify({
+        type: "join",
+        name: match.name || "",
+        player_id: playerId,
+        session_id: sessionId,
+        reservation_token: match.reservationToken || "",
+      }));
+    };
+    ws.onmessage = (event) => handle(JSON.parse(event.data));
     ws.onclose = () => {
+      if (serial !== connectionSerial) return;
       joinBtn.disabled = false;
       joinBtn.querySelector("span").textContent = mode === "create" ? "Create & enter" : "Join lobby";
+      playBtn.disabled = false;
+      playBtn.querySelector("span").textContent = "Play";
+      if (!gameFinished && currentMatch && joinScreen.classList.contains("hidden")) {
+        scheduleReconnect();
+        return;
+      }
       if (!joinScreen.classList.contains("hidden") && !joinHint.textContent) {
         joinHint.textContent = "Connection closed. Try again.";
       }
-      addLog("Connection closed.");
     };
     ws.onerror = () => {
-      joinHint.textContent = "The channel is not responding.";
-      addLog("Connection error.");
+      if (joinScreen.classList.contains("hidden")) addLog("Connection interrupted.");
+      else joinHint.textContent = "The channel is not responding.";
     };
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer || !currentMatch || gameFinished) return;
+    if (reconnectAttempts >= 8) {
+      returnToJoin("The server restarted. Click Play to find a new game.");
+      return;
+    }
+    const delay = Math.min(5000, 750 * (2 ** reconnectAttempts));
+    reconnectAttempts += 1;
+    addLog(`Connection lost. Reconnecting (${reconnectAttempts}/8)…`);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect(currentMatch, { reconnecting: true });
+    }, delay);
+  }
+
+  function returnToJoin(message) {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    saveCurrentMatch(null);
+    you = null;
+    readySent = false;
+    gameScreen.classList.add("hidden");
+    joinScreen.classList.remove("hidden");
+    document.body.dataset.screen = "join";
+    document.body.dataset.phase = "lobby";
+    playBtn.disabled = false;
+    playBtn.querySelector("span").textContent = "Play";
+    joinHint.textContent = message;
   }
 
   // ------------------------------------------------------------------
@@ -152,6 +293,10 @@
   }
 
   function onSystem(msg) {
+    if (msg.code === "room_missing" || msg.code === "reservation_expired") {
+      returnToJoin(msg.text);
+      return;
+    }
     // While still on the join screen, surface errors (e.g. missing lobby) in
     // the hint line rather than the hidden in-game log.
     if (!joinScreen.classList.contains("hidden")) joinHint.textContent = msg.text;
@@ -175,10 +320,22 @@
     }
     renderMissionStatus();
     renderSeats();
-    if (you && !readySent) showReady();
+    if (you && !readySent) {
+      if (msg.auto_ready) {
+        readySent = true;
+        showWaiting();
+      } else {
+        showReady();
+      }
+    }
   }
 
-  let readySent = false;
+  function showWaiting() {
+    inputPanel.classList.remove("hidden");
+    inputTimer.textContent = "Waiting for other players…";
+    inputControls.innerHTML = "";
+  }
+
   function showReady() {
     inputPanel.classList.remove("hidden");
     inputTimer.textContent = "Waiting for other players…";
@@ -415,6 +572,8 @@
   }
 
   function onGameOver(msg) {
+    gameFinished = true;
+    saveCurrentMatch(null);
     hideInput();
     hideVote();
     document.body.dataset.phase = "game_over";

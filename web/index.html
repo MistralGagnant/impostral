@@ -42,24 +42,31 @@
           <p class="hero-summary">Blend in. Call them out. Stay alive.</p>
 
           <div class="join-console">
-            <div class="mode-switch" role="tablist" aria-label="Lobby mode">
-              <button id="mode-create" type="button" role="tab" aria-selected="true">Create lobby</button>
-              <button id="mode-join" type="button" role="tab" aria-selected="false">Join lobby</button>
-            </div>
-            <label>
-              <span>Lobby name</span>
-              <input id="room-input" type="text" value="lobby" autocomplete="off" />
-            </label>
-            <label id="humans-field">
-              <span>Human players <small>including you</small></span>
-              <input id="humans-input" type="number" min="1" max="8" step="1" value="2" autocomplete="off" />
-            </label>
-            <label>
+            <label class="codename-field">
               <span>Codename <small>private</small></span>
               <input id="name-input" type="text" placeholder="anonymous" autocomplete="off" />
             </label>
-            <button id="join-btn" type="button"><span>Create &amp; enter</span></button>
+            <button id="play-btn" class="play-btn" type="button"><span>Play</span></button>
             <p id="join-hint" class="hint" aria-live="polite"></p>
+
+            <details id="advanced-options" class="advanced-options">
+              <summary>Private lobby options</summary>
+              <div class="advanced-grid">
+                <div class="mode-switch" role="tablist" aria-label="Lobby mode">
+                  <button id="mode-create" type="button" role="tab" aria-selected="true">Create lobby</button>
+                  <button id="mode-join" type="button" role="tab" aria-selected="false">Join lobby</button>
+                </div>
+                <label>
+                  <span>Lobby name</span>
+                  <input id="room-input" type="text" value="lobby" autocomplete="off" />
+                </label>
+                <label id="humans-field">
+                  <span>Human players <small>including you</small></span>
+                  <input id="humans-input" type="number" min="1" max="8" step="1" value="2" autocomplete="off" />
+                </label>
+                <button id="join-btn" type="button"><span>Create &amp; enter</span></button>
+              </div>
+            </details>
           </div>
         </div>
 

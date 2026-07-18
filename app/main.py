@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -51,6 +53,19 @@ class CreateLobbyRequest(BaseModel):
     num_humans: Optional[int] = None
 
 
+class MatchmakingRequest(BaseModel):
+    player_id: str
+    session_id: str
+    name: str = ""
+
+
+_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
+
+
+def _valid_client_id(value: str) -> bool:
+    return bool(_CLIENT_ID_RE.fullmatch(value))
+
+
 @app.post("/lobby")
 async def create_lobby(req: CreateLobbyRequest) -> JSONResponse:
     """Create a lobby with a chosen number of human seats.
@@ -69,12 +84,27 @@ async def create_lobby(req: CreateLobbyRequest) -> JSONResponse:
             status_code=400,
         )
 
-    room = rooms.create(name, num_humans=num_humans, num_llms=s.num_llms)
+    room = await rooms.create_private(
+        name, num_humans=num_humans, num_llms=s.num_llms
+    )
     if room is None:
         return JSONResponse({"error": "exists", "name": name}, status_code=409)
     return JSONResponse(
         {"name": name, "num_humans": room.num_humans, "num_llms": room.num_llms}
     )
+
+
+@app.post("/matchmaking")
+async def matchmaking(req: MatchmakingRequest) -> JSONResponse:
+    """Reserve a seat in the oldest public lobby, creating one if needed."""
+    if not _valid_client_id(req.player_id) or not _valid_client_id(req.session_id):
+        return JSONResponse({"error": "bad_identity"}, status_code=400)
+    room, token, created = await rooms.matchmake(req.player_id, req.session_id)
+    return JSONResponse({
+        "room_id": room.id,
+        "reservation_token": token,
+        "created": created,
+    })
 
 
 @app.get("/stats")
@@ -111,6 +141,8 @@ async def _maybe_start(room) -> None:
     if room.started or not room.all_humans_ready():
         return
     room.started = True
+    room.status = "running"
+    room.updated_at = time.time()
     engine = GameEngine(room)
     room.engine_task = asyncio.create_task(engine.run())
     log.info("Game started in room %s", room.id)
@@ -133,21 +165,48 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                 if room is None:
                     # Joining never creates a lobby: the name must exist.
                     await ws.send_json(events.srv_system(
-                        text=f"No lobby named “{room_id}”. Create it first."))
+                        text=f"No lobby named “{room_id}”. Create it first.",
+                        code="room_missing",
+                    ))
                     break
-                seat_id = await room.attach(ws, msg.name)
+                seat = await room.attach(
+                    ws,
+                    msg.name,
+                    player_id=msg.player_id,
+                    session_id=msg.session_id,
+                    reservation_token=msg.reservation_token,
+                )
+                seat_id = seat.id if seat is not None else None
+                if seat_id is None and room.visibility == "public":
+                    await ws.send_json(events.srv_system(
+                        text="Your matchmaking reservation expired. Click Play again.",
+                        code="reservation_expired",
+                    ))
+                    break
                 seats = [s.public() for s in room.seats.values()]
                 await ws.send_json(
                     events.srv_room_state(
                         seats=seats, phase=room.phase.value,
                         round_no=room.round_no, you=seat_id,
+                        auto_ready=room.visibility == "public",
                     )
                 )
                 if seat_id is None:
                     await ws.send_json(events.srv_system(text="Room full: you are spectating."))
                 else:
+                    if room.visibility == "public":
+                        room.ready_seats.add(seat_id)
                     await room.broadcast(events.srv_system(
                         text=f"A player joined ({seat_id})."))
+                    await room.broadcast(events.srv_room_state(
+                        seats=[s.public() for s in room.seats.values()],
+                        phase=room.phase.value,
+                        round_no=room.round_no,
+                        you=None,
+                        auto_ready=room.visibility == "public",
+                    ))
+                    await room.resend_pending(seat_id)
+                    await _maybe_start(room)
                 continue
 
             if seat_id is None:
@@ -168,10 +227,18 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
         log.exception("Error in WebSocket loop")
     finally:
         if room is not None:
-            if seat_id:
-                room.cancel_input(seat_id)
+            was_attached = room.seat_of(ws) is not None
             room.detach(ws)
-            try:
-                await room.broadcast(events.srv_system(text="A player disconnected."))
-            except Exception:  # noqa: BLE001
-                pass
+            if was_attached:
+                try:
+                    await room.broadcast(events.srv_system(text="A player disconnected."))
+                    await room.broadcast(events.srv_room_state(
+                        seats=[s.public() for s in room.seats.values()],
+                        phase=room.phase.value,
+                        round_no=room.round_no,
+                        you=None,
+                        auto_ready=room.visibility == "public",
+                    ))
+                except Exception:  # noqa: BLE001
+                    pass
+            await rooms.cleanup()
