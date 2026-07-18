@@ -31,10 +31,14 @@ class WebUiTest(unittest.TestCase):
 
     def test_lobby_wait_is_explained_clearly(self) -> None:
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "style.css").read_text(encoding="utf-8")
 
         self.assertIn("let humanWaitSeconds = 15", app_js)
         self.assertIn('phasePrompt.textContent = "Waiting for players…"', app_js)
-        self.assertIn('"Waiting for players · "', app_js)
+        self.assertIn('label.textContent = "Waiting for other players…"', app_js)
+        self.assertIn("phasePrompt.replaceChildren(label, countdown)", app_js)
+        self.assertIn(".lobby-countdown {", css)
+        self.assertIn("font-size: clamp(2.8rem, 8vh, 5.4rem)", css)
 
 
 if __name__ == "__main__":

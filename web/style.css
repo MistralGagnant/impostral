@@ -547,6 +547,15 @@ body[data-phase="game_over"] .question-frame { display: none; }
   line-height: 1.35;
   text-wrap: balance;
 }
+.lobby-wait-copy { display: block; }
+.lobby-countdown {
+  display: block;
+  margin-top: 8px;
+  color: var(--orange);
+  font-size: clamp(2.8rem, 8vh, 5.4rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
 
 /* Answer input bar */
 #input-panel {

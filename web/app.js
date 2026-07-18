@@ -336,34 +336,46 @@
   }
 
   function showWaiting(remaining = humanWaitSeconds) {
-    inputPanel.classList.remove("hidden");
+    inputPanel.classList.add("hidden");
     inputControls.innerHTML = "";
     startLobbyCountdown(remaining);
   }
 
   function showReady(remaining = humanWaitSeconds) {
     inputPanel.classList.remove("hidden");
+    inputTimer.textContent = "";
     inputControls.innerHTML = "";
     startLobbyCountdown(remaining);
     const btn = mkBtn("I'm ready", () => {
       readySent = true;
       ws.send(JSON.stringify({ type: "ready" }));
-      inputControls.innerHTML = "";
+      inputPanel.classList.add("hidden");
     });
     inputControls.appendChild(btn);
   }
 
   function startLobbyCountdown(remaining) {
     if (inputCountdown) clearInterval(inputCountdown);
-    if (remaining <= 0) {
-      inputCountdown = null;
-      inputTimer.textContent = "Starting game…";
-      return;
-    }
-    startCountdown(
-      inputTimer, remaining, (handle) => (inputCountdown = handle),
-      "Waiting for players · ",
-    );
+    inputTimer.textContent = "";
+    let seconds = Math.round(remaining);
+    const tick = () => {
+      if (seconds <= 0) {
+        phasePrompt.textContent = "Starting game…";
+        clearInterval(inputCountdown);
+        inputCountdown = null;
+        return;
+      }
+      const label = document.createElement("span");
+      label.className = "lobby-wait-copy";
+      label.textContent = "Waiting for other players…";
+      const countdown = document.createElement("strong");
+      countdown.className = "lobby-countdown";
+      countdown.textContent = `${seconds}s`;
+      phasePrompt.replaceChildren(label, countdown);
+      seconds -= 1;
+    };
+    inputCountdown = setInterval(tick, 1000);
+    tick();
   }
 
   // ------------------------------------------------------------------
