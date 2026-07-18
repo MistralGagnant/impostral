@@ -135,34 +135,6 @@ _PUBLIC_RESPONSE_SCHEMA = {
     },
 }
 
-_DELIBERATION_SCHEMA = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "action_deliberation_impostral",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "thinking": {
-                    "type": "string",
-                    "description": "Private analysis and strategic choice.",
-                    "maxLength": 800,
-                },
-                "action": {"type": "string", "enum": ["ask", "pass"]},
-                "target": {"type": ["string", "null"]},
-                "output": {
-                    "type": "string",
-                    "description": "One public question, or an empty string when passing.",
-                    "maxLength": 180,
-                },
-            },
-            "required": ["thinking", "action", "target", "output"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-
 def _vote_schema(eligible_targets: list[str]) -> dict:
     """Build a strict schema that only accepts a currently eligible seat."""
     return {
@@ -259,40 +231,6 @@ class LLMAgent:
         )
         return await self._public_output(prompt)
 
-    async def reply(self, asker: str, question: str, transcript: str) -> str:
-        if get_client() is None:
-            return self._mock_answer()
-        prompt = (
-            f"Transcript:\n{transcript}\n\n"
-            f"{asker} asks you directly: “{question}”\n"
-            "Reply naturally; you may be terse, defensive, evasive, or strongly "
-            "counter-accusatory."
-        )
-        return await self._public_output(prompt)
-
-    async def deliberation_action(self, transcript: str, alive_others: list[str]) -> dict:
-        """Return a public action without exposing private reasoning."""
-        if get_client() is None:
-            return _mock_deliberation(alive_others)
-        prompt = (
-            f"Transcript:\n{transcript}\n\n"
-            f"Deliberation phase. Active seats you may question: "
-            f"{', '.join(alive_others) or '(none)'}.\n"
-            "Choose an intervention that makes you sound human: question a seat "
-            "or pass. When asking, ``output`` contains one short natural question."
-        )
-        try:
-            data = await self._chat_json(prompt, _DELIBERATION_SCHEMA)
-            if data.get("action") == "ask" and data.get("target") in alive_others:
-                return {
-                    "action": "ask",
-                    "target": data["target"],
-                    "text": _one_short_sentence(data.get("output")),
-                }
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Could not parse agent deliberation: %s", exc)
-        return {"action": "pass", "target": None, "text": ""}
-
     async def vote(self, transcript: str, alive_others: list[str]) -> str:
         """Choose another active seat without exposing the private rationale."""
         if not alive_others:
@@ -320,17 +258,6 @@ class LLMAgent:
         if random.random() < 0.45:
             return random.choice(_TACTICAL_FEW_SHOTS)[1]
         return random.choice(self.persona["exemples"])[1]
-
-
-def _mock_deliberation(alive_others: list[str]) -> dict:
-    if alive_others and random.random() < 0.6:
-        target = random.choice(alive_others)
-        return {
-            "action": "ask",
-            "target": target,
-            "text": "Would you answer the same way if that had really happened to you?",
-        }
-    return {"action": "pass", "target": None, "text": ""}
 
 
 def _one_short_sentence(value: object) -> str:

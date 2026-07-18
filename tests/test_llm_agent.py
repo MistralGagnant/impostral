@@ -16,7 +16,6 @@ sys.modules.setdefault("app.config", config_stub)
 sys.modules.setdefault("app.mistral_client", client_stub)
 
 from app.agents.llm_agent import (  # noqa: E402
-    _DELIBERATION_SCHEMA,
     _PUBLIC_RESPONSE_SCHEMA,
     LLMAgent,
     MAX_PUBLIC_CHARS,
@@ -37,12 +36,6 @@ class SortieAgentTest(unittest.TestCase):
         )
         self.assertEqual(schema["properties"]["thinking"]["maxLength"], 800)
         self.assertFalse(schema["additionalProperties"])
-
-    def test_la_deliberation_garde_le_raisonnement_prive(self) -> None:
-        schema = _DELIBERATION_SCHEMA["json_schema"]["schema"]
-        self.assertIn("thinking", schema["required"])
-        self.assertIn("output", schema["required"])
-        self.assertNotIn("thinking", {"action", "target", "text"})
 
     def test_deux_phrases_courtes_peuvent_etre_diffusees(self) -> None:
         self.assertEqual(

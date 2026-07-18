@@ -17,7 +17,6 @@ from pydantic import BaseModel, ValidationError
 class Phase(str, Enum):
     LOBBY = "lobby"
     QUESTION = "question"
-    DELIBERATION = "deliberation"
     VOTE = "vote"
     RESOLUTION = "resolution"
     GAME_OVER = "game_over"
@@ -38,13 +37,6 @@ class AudioBlobMsg(BaseModel):
     text: Optional[str] = None
 
 
-class DirectQuestionMsg(BaseModel):
-    type: Literal["direct_question"]
-    target: str  # Target seat ID.
-    audio_b64: Optional[str] = None
-    text: Optional[str] = None
-
-
 class SubmitVoteMsg(BaseModel):
     type: Literal["submit_vote"]
     target: str
@@ -55,13 +47,12 @@ class ReadyMsg(BaseModel):
 
 
 ClientMessage = (
-    JoinMsg | AudioBlobMsg | DirectQuestionMsg | SubmitVoteMsg | ReadyMsg
+    JoinMsg | AudioBlobMsg | SubmitVoteMsg | ReadyMsg
 )
 
 _PARSERS = {
     "join": JoinMsg,
     "audio_blob": AudioBlobMsg,
-    "direct_question": DirectQuestionMsg,
     "submit_vote": SubmitVoteMsg,
     "ready": ReadyMsg,
 }
@@ -108,7 +99,7 @@ def srv_utterance(*, seat: str, text: str, audio_url: Optional[str], context: st
 
 
 def srv_request_input(*, mode: str, deadline: Optional[float], targets: Optional[list[str]] = None) -> dict:
-    """Request an answer, vote, or question from the relevant human client."""
+    """Request an answer or vote from the relevant human client."""
     return {"type": "request_input", "mode": mode, "deadline": deadline, "targets": targets}
 
 

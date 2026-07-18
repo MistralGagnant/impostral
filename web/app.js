@@ -196,7 +196,7 @@
   // Phases and transcript
   // ------------------------------------------------------------------
   const PHASE_LABEL = {
-    lobby: "Lobby", question: "Question", deliberation: "Deliberation",
+    lobby: "Lobby", question: "Question",
     vote: "Vote", resolution: "Resolution", game_over: "Game over",
   };
 
@@ -217,7 +217,6 @@
   function phaseFallback(phase) {
     const copy = {
       lobby: "Waiting for all players to connect.",
-      deliberation: "Review the answers. Question anything that feels human.",
       vote: "Choose carefully. The wrong signal can expose you.",
       resolution: "Analyzing the vote…",
       game_over: "The protocol is complete.",
@@ -267,18 +266,16 @@
     inputControls.innerHTML = "";
     startCountdown(inputTimer, msg.deadline, (h) => (inputCountdown = h), "Your turn: ");
 
-    if (msg.mode === "answer" || msg.mode === "reply") {
+    if (msg.mode === "answer") {
       buildSpeakPanel((payload) => {
         ws.send(JSON.stringify({ type: "audio_blob", ...payload }));
         hideInput();
       });
-    } else if (msg.mode === "deliberation") {
-      buildDeliberationPanel(msg.targets || []);
     }
   }
 
   // Textarea, microphone recording button, and submit action.
-  function buildSpeakPanel(onSend, extraNode) {
+  function buildSpeakPanel(onSend) {
     const ta = document.createElement("textarea");
     ta.placeholder = "Type… or use the microphone";
     const recBtn = mkBtn("● Mic", null, "rec");
@@ -297,33 +294,8 @@
     const sendBtn = mkBtn("Send", () =>
       onSend({ audio_b64: recBtn.dataset.audio || null, text: ta.value.trim() })
     );
-    if (extraNode) inputControls.appendChild(extraNode);
     inputControls.append(ta, recBtn, sendBtn);
     return { textarea: ta, recBtn };
-  }
-
-  function buildDeliberationPanel(targets) {
-    const select = document.createElement("select");
-    for (const t of targets) {
-      const opt = document.createElement("option");
-      opt.value = t; opt.textContent = t;
-      select.appendChild(opt);
-    }
-    const { } = buildSpeakPanel((payload) => {
-      ws.send(JSON.stringify({
-        type: "direct_question", target: select.value,
-        audio_b64: payload.audio_b64, text: payload.text,
-      }));
-      hideInput();
-    }, select);
-    // Rename “Send” and add a skip action.
-    const btns = inputControls.querySelectorAll("button");
-    btns[btns.length - 1].textContent = "Ask question";
-    const passBtn = mkBtn("Skip", () => {
-      ws.send(JSON.stringify({ type: "direct_question", target: "", text: "" }));
-      hideInput();
-    }, "secondary");
-    inputControls.appendChild(passBtn);
   }
 
   function buildVotePanel(targets) {

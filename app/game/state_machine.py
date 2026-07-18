@@ -1,4 +1,4 @@
-"""Game flow engine: QUESTION -> DELIBERATION -> VOTE -> RESOLUTION.
+"""Game flow engine: QUESTION -> VOTE -> RESOLUTION.
 
 Key properties:
 - Every utterance passes through the seat's anonymized TTS voice.
@@ -44,7 +44,6 @@ class GameEngine:
                 await self._question_phase()
                 if self._check_end():
                     break
-                await self._deliberation_phase()
                 await self._vote_phase()
                 await self._resolution_phase()
 
@@ -97,77 +96,6 @@ class GameEngine:
             return seat.id, text
         payload = await self._request_human(seat, mode="answer", dur=dur)
         return seat.id, await self._payload_to_text(payload)
-
-    # ------------------------------------------------------------------
-    # Phase DÉLIBÉRATION
-    # ------------------------------------------------------------------
-    async def _deliberation_phase(self) -> None:
-        self.room.phase = Phase.DELIBERATION
-        dur = self.settings.deliberation_seconds
-        await self.room.broadcast(
-            events.srv_phase_change(phase=Phase.DELIBERATION.value, deadline=dur)
-        )
-        await self._broadcast_state()
-
-        loop = asyncio.get_event_loop()
-        end_at = loop.time() + dur
-        askers = self.room.alive_seats()
-        random.shuffle(askers)
-        idx = 0
-
-        # Plafond d'échanges : borne la phase même quand les réponses arrivent
-        # instantanément (agents rapides), pour ne pas noyer le transcript.
-        max_exchanges = max(2, len(self.room.alive_seats()) * 2)
-        done = 0
-
-        # On enchaîne des échanges (question dirigée → réponse) tant qu'il reste
-        # du temps, au moins deux sièges vivants, et sous le plafond.
-        while (loop.time() < end_at and done < max_exchanges
-               and len(self.room.alive_seats()) >= 2):
-            asker = askers[idx % len(askers)]
-            idx += 1
-            if not asker.alive:
-                continue
-            remaining = int(end_at - loop.time())
-            spoke = await self._one_exchange(asker, remaining)
-            if spoke:
-                done += 1
-
-    async def _one_exchange(self, asker, remaining: int) -> bool:
-        """Réalise un échange (question dirigée → réponse). Renvoie True si un
-        échange a bien eu lieu (l'asker n'a pas passé)."""
-        others = self.room.alive_ids(exclude=asker.id)
-        if not others:
-            return False
-
-        if asker.kind == "llm":
-            action = await asker.agent.deliberation_action(self.room.render_transcript(), others)
-            if action["action"] != "ask":
-                return False
-            target_id, q_text = action["target"], action["text"] or "Could you elaborate?"
-        else:
-            payload = await self._request_human(
-                asker, mode="deliberation", dur=min(remaining, 25), targets=others
-            )
-            if not payload or not payload.get("target"):
-                return False  # le joueur a passé
-            target_id = payload["target"]
-            q_text = await self._payload_to_text(payload)
-            if target_id not in others:
-                return False
-
-        await self._speak(asker, q_text or "Could you elaborate?", context=f"to {target_id}")
-
-        target = self.room.seats.get(target_id)
-        if target is None or not target.alive:
-            return True
-        if target.kind == "llm":
-            reply = await target.agent.reply(asker.id, q_text, self.room.render_transcript())
-        else:
-            payload = await self._request_human(target, mode="reply", dur=min(remaining, 25))
-            reply = await self._payload_to_text(payload)
-        await self._speak(target, reply or "(silence)", context=f"reply to {asker.id}")
-        return True
 
     # ------------------------------------------------------------------
     # Phase VOTE

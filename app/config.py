@@ -41,7 +41,6 @@ class Settings(BaseSettings):
 
     # --- Phase durations in seconds -------------------------------------
     question_seconds: int = 45
-    deliberation_seconds: int = 90
     vote_seconds: int = 30
     # Fixed reveal cadence used to hide response-time tells.
     reveal_gap_seconds: float = 1.2

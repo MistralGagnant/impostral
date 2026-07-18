@@ -2,8 +2,8 @@
 
 A web-based social bluffing game **humans vs LLM**, inspired by a Jubilee video.
 
-Humans and LLM agents (Mistral) share a room. In each round, a **question** is asked to everyone,
-followed by a **deliberation** where players discuss, and then a shared **vote** to identify an AI.
+Humans and LLM agents (Mistral) share a room. In each round, everyone answers the same
+**question**, then immediately takes part in a shared **vote** to identify an AI.
 Each AI competes independently and tries to pass as human. The winning AI is the last one eliminated
 by the humans; surviving AIs tie if the round limit is reached.
 

@@ -142,7 +142,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--orange); box-sha
 .question-phase b { color: #76513a; font-weight: 500; }
 
 .arena-feed { position: absolute; top: 65%; left: 50%; z-index: 4; width: min(440px, 50%); max-height: 94px; border-left: 1px solid rgba(255, 104, 0, 0.4); background: linear-gradient(90deg, rgba(5, 8, 6, 0.94), rgba(5, 8, 6, 0.78), transparent); opacity: 0; overflow: hidden; transform: translateX(-50%); transition: opacity 180ms; pointer-events: none; }
-body[data-phase="deliberation"] .arena-feed { opacity: 1; }
+body[data-phase="question"] .arena-feed,
+body[data-phase="vote"] .arena-feed { opacity: 1; }
 #transcript { max-height: 94px; padding: 8px 12px; overflow-y: auto; scrollbar-color: var(--orange-dark) transparent; scrollbar-width: thin; }
 .transcript-empty { margin: 8px; color: #4f4842; font-size: 0.56rem; letter-spacing: 0.12em; text-align: center; text-transform: uppercase; }
 .utt { margin: 0 0 4px; color: #a9a39b; font-size: 0.62rem; line-height: 1.35; }

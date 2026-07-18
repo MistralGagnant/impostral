@@ -3,7 +3,7 @@
 Social bluffing game where **humans** and **Mistral LLM agents** share a room.
 Every AI competes independently to pass as human, while all active players vote
 during elimination rounds. The last AI eliminated wins. Each round follows:
-**question -> deliberation -> vote -> resolution**.
+**question -> vote -> resolution**.
 
 Status: **functional POC**, validated end to end with chat, Voxtral STT, and TTS.
 
@@ -93,11 +93,11 @@ never receive role information; they only see the transcript.
 | `app/config.py` | Models, timings, composition, and voice language settings. |
 | `app/mistral_client.py` | Shared Mistral client with robust 1.x/2.x imports. |
 | `app/rooms.py` | Rooms, seats, connections, and human input routing. |
-| `app/game/state_machine.py` | Phase engine, timing protection, exchange cap, and win conditions. |
+| `app/game/state_machine.py` | Phase engine, timing protection, and win conditions. |
 | `app/game/events.py` | WebSocket message schemas; active roles are never exposed. |
 | `app/game/questions.py` | Open-ended question bank. |
 | `app/game/stats.py` | Per-game records and per-model performance aggregation. |
-| `app/agents/llm_agent.py` | Structured LLM answers, questions, personas, few-shots, and mock fallback. |
+| `app/agents/llm_agent.py` | Structured LLM answers, votes, personas, few-shots, and mock fallback. |
 | `app/audio/stt.py` / `tts.py` | Voxtral wrappers with graceful fallback. |
 | `app/audio/voices.py` | Cached preset voice pool with distinct speakers. |
 | `app/audio/store.py` | Ephemeral FIFO audio store served from `/audio/{id}`. |
@@ -106,8 +106,7 @@ never receive role information; they only see the transcript.
 ## WebSocket protocol
 
 - **Client -> server**: `join{name}`, `ready`, `audio_blob{audio_b64|text}`,
-  `direct_question{target, audio_b64|text}` (empty target means skip), and
-  `submit_vote{target}`.
+  and `submit_vote{target}`.
 - **Server -> client**: `room_state`, `phase_change{phase, deadline, prompt}`,
   `utterance{seat, text, audio_url, context}`, `request_input{mode, deadline,
   targets}`, `vote_result{tally, eliminated}`, `elimination{seat, role}`,

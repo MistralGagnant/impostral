@@ -67,8 +67,6 @@ def _normalize(msg) -> dict:
     t = msg.type
     if t == "audio_blob":
         return {"audio_b64": msg.audio_b64, "text": msg.text}
-    if t == "direct_question":
-        return {"target": msg.target, "audio_b64": msg.audio_b64, "text": msg.text}
     if t == "submit_vote":
         return {"target": msg.target}
     return {}
@@ -121,7 +119,7 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                 await _maybe_start(room)
                 continue
 
-            # audio_blob / direct_question / submit_vote -> expected input
+            # audio_blob / submit_vote -> expected input
             room.resolve_input(seat_id, _normalize(msg))
 
     except WebSocketDisconnect:
