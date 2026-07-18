@@ -29,6 +29,7 @@ async def transcribe(audio_bytes: bytes | None, *, fallback_text: str = "") -> s
         resp = client.audio.transcriptions.complete(
             model=settings.stt_model,
             file={"content": audio_bytes, "file_name": "clip.webm"},
+            language=settings.stt_language,
         )
         return getattr(resp, "text", "") or ""
 
