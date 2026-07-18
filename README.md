@@ -38,6 +38,9 @@ specifics of the `mistralai` 2.x SDK.
 ## Assets
 
 The `assets` folder contains the game's graphical resources:
-- `characters.png`: character illustrations
-- `impostral.png`: game logo
-- `logo.png`: game icon
+- **Characters**: Illustrations of the in-game characters.
+  ![Characters](assets/characters.png)
+- **Impostral Logo**: The main logo of the game.
+  ![Impostral Logo](assets/impostral.png)
+- **Game Icon**: The icon representing the game.
+  ![Game Icon](assets/logo.png)
