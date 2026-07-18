@@ -1,8 +1,7 @@
-"""Configuration centrale (variables d'env, préfixe IMPOSTRAL_).
+"""Central configuration for IMPOSTRAL_-prefixed environment variables.
 
-Toutes les valeurs ont un défaut raisonnable pour permettre de lancer le jeu
-immédiatement. Sans MISTRAL_API_KEY, le jeu bascule en mode « mock » : les agents
-sont scriptés et il n'y a pas d'audio (texte seul).
+Every value has a practical default so the game can start immediately. Without
+MISTRAL_API_KEY, the game uses scripted agents in text-only mock mode.
 """
 from __future__ import annotations
 
@@ -22,38 +21,36 @@ class Settings(BaseSettings):
     )
 
     # --- Mistral ---------------------------------------------------------
-    # La clé suit la convention standard MISTRAL_API_KEY (sans préfixe) :
-    # l'alias explicite court-circuite env_prefix pour ce champ.
+    # The API key follows the standard unprefixed MISTRAL_API_KEY convention.
     mistral_api_key: str = Field("", alias="MISTRAL_API_KEY")
     chat_model: str = "mistral-large-latest"
     stt_model: str = "voxtral-mini-latest"
     tts_model: str = "voxtral-mini-tts-latest"
 
-    # --- Composition d'une partie ---------------------------------------
+    # --- Game composition ------------------------------------------------
     num_humans: int = 2
     num_llms: int = 3
     max_rounds: int = 5
     reveal_role_on_elimination: bool = True
 
-    # --- Durées de phase (secondes) -------------------------------------
+    # --- Phase durations in seconds -------------------------------------
     question_seconds: int = 45
     deliberation_seconds: int = 90
     vote_seconds: int = 30
-    # Cadence de révélation entre deux prises de parole (anti-tell de timing).
+    # Fixed reveal cadence used to hide response-time tells.
     reveal_gap_seconds: float = 1.2
 
-    # --- Pool de voix TTS (repli mode mock uniquement) ------------------
-    # Hors mock, le pool réel est construit dynamiquement depuis les voix preset
-    # Voxtral (voir app/audio/voices.py). Ces étiquettes ne servent qu'en mock.
+    # --- TTS voice pool used only as a mock fallback ---------------------
+    # Outside mock mode, preset Voxtral voices are loaded dynamically.
     voice_pool: list[str] = [
         "Aria", "Colette", "Emile", "Nadia", "Oskar", "Yara", "Timo", "Lise",
     ]
-    # Langue préférée pour choisir les voix preset (préfixe de code langue).
-    voice_lang_prefix: str = "fr"
+    # Preferred preset voice language code prefix.
+    voice_lang_prefix: str = "en"
 
     @property
     def mock_mode(self) -> bool:
-        """Vrai si aucune clé API : agents scriptés, pas d'audio réel."""
+        """Return True when no API key is set and the game should use mock mode."""
         return not self.mistral_api_key.strip()
 
 

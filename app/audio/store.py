@@ -1,7 +1,7 @@
-"""Magasin audio éphémère en mémoire, exposé via /audio/{id}.
+"""Ephemeral in-memory audio store exposed through /audio/{id}.
 
-Les clips TTS sont volatils : on garde un cache borné (FIFO) pour éviter de
-grossir indéfiniment pendant une partie longue.
+TTS clips are volatile and kept in a bounded FIFO cache to avoid unbounded
+growth during long games.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ _store: "OrderedDict[str, tuple[bytes, str]]" = OrderedDict()
 
 
 def put(data: bytes, content_type: str = "audio/mpeg") -> str:
-    """Enregistre un clip et renvoie son URL relative (/audio/{id})."""
+    """Store a clip and return its relative /audio/{id} URL."""
     clip_id = uuid.uuid4().hex
     _store[clip_id] = (data, content_type)
     while len(_store) > _MAX_CLIPS:

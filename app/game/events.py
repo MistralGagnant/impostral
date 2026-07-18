@@ -1,11 +1,10 @@
-"""Schémas des messages échangés sur le WebSocket.
+"""Message schemas exchanged over the game WebSocket.
 
-Sortants (serveur → client) : simples dicts construits par les helpers `srv_*`.
-Entrants (client → serveur) : validés par `parse_client_message`.
+Outgoing server messages are dictionaries built by `srv_*` helpers. Incoming
+client messages are validated by `parse_client_message`.
 
-On ne divulgue JAMAIS le rôle (humain/llm) d'un siège vivant dans les messages
-sortants ; le rôle n'apparaît qu'au moment d'une élimination si la config
-`reveal_role_on_elimination` est active.
+The role of an active seat is never disclosed. It is only revealed on
+elimination when `reveal_role_on_elimination` is enabled.
 """
 from __future__ import annotations
 
@@ -24,7 +23,7 @@ class Phase(str, Enum):
     GAME_OVER = "game_over"
 
 
-# --- Messages entrants (client → serveur) --------------------------------
+# --- Incoming messages: client -> server ---------------------------------
 
 
 class JoinMsg(BaseModel):
@@ -34,14 +33,14 @@ class JoinMsg(BaseModel):
 
 class AudioBlobMsg(BaseModel):
     type: Literal["audio_blob"]
-    # Audio encodé base64 (webm/opus depuis MediaRecorder), ou texte de repli.
+    # Base64 WebM/Opus audio from MediaRecorder, or fallback text.
     audio_b64: Optional[str] = None
     text: Optional[str] = None
 
 
 class DirectQuestionMsg(BaseModel):
     type: Literal["direct_question"]
-    target: str  # id de siège visé
+    target: str  # Target seat ID.
     audio_b64: Optional[str] = None
     text: Optional[str] = None
 
@@ -69,7 +68,7 @@ _PARSERS = {
 
 
 def parse_client_message(raw: dict[str, Any]) -> Optional[BaseModel]:
-    """Valide un message entrant ; renvoie None si invalide/inconnu."""
+    """Validate an incoming message or return None when invalid or unknown."""
     parser = _PARSERS.get(raw.get("type"))
     if parser is None:
         return None
@@ -79,7 +78,7 @@ def parse_client_message(raw: dict[str, Any]) -> Optional[BaseModel]:
         return None
 
 
-# --- Messages sortants (serveur → client) --------------------------------
+# --- Outgoing messages: server -> client ---------------------------------
 
 
 def srv_room_state(
@@ -104,12 +103,12 @@ def srv_utterance(*, seat: str, text: str, audio_url: Optional[str], context: st
         "seat": seat,
         "text": text,
         "audio_url": audio_url,
-        "context": context,  # ex. "réponse", "à Joueur C", …
+        "context": context,  # For example: "answer" or "to Player C".
     }
 
 
 def srv_request_input(*, mode: str, deadline: Optional[float], targets: Optional[list[str]] = None) -> dict:
-    """Demande au client humain concerné une saisie (réponse/vote/question)."""
+    """Request an answer, vote, or question from the relevant human client."""
     return {"type": "request_input", "mode": mode, "deadline": deadline, "targets": targets}
 
 

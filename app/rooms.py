@@ -1,8 +1,8 @@
-"""Salles, sièges et connexions WebSocket.
+"""Rooms, seats, and WebSocket connections.
 
-Une salle contient des sièges (humains ou LLM), le transcript de la partie et les
-connexions ouvertes. La logique de déroulé vit dans `game/state_machine.py` ;
-ici on gère l'état partagé et l'aiguillage des entrées humaines.
+A room contains human and LLM seats, the game transcript, and open connections.
+The game flow lives in `game/state_machine.py`; this module owns shared state and
+routes human input.
 """
 from __future__ import annotations
 
@@ -22,13 +22,13 @@ log = logging.getLogger("impostral.rooms")
 
 @dataclass
 class Seat:
-    id: str  # "Joueur A", …
+    id: str  # "Player A", ...
     kind: str  # "human" | "llm"
     voice: str
     alive: bool = True
-    name: str = ""  # nom privé (jamais diffusé aux autres)
+    name: str = ""  # Private name, never broadcast to other players.
     agent: Optional[LLMAgent] = None
-    connected: bool = False  # pour un siège humain
+    connected: bool = False  # Human-seat connection state.
 
     def public(self, *, reveal_role: bool = False) -> dict:
         d = {"id": self.id, "alive": self.alive, "connected": self.connected}
@@ -48,19 +48,19 @@ class Room:
     engine_task: Optional[asyncio.Task] = None
     ready_seats: set = field(default_factory=set)
 
-    # Connexions : websocket ↔ siège
+    # Connections: WebSocket <-> seat
     _ws_all: set = field(default_factory=set)
     _seat_of_ws: dict = field(default_factory=dict)
     _ws_of_seat: dict = field(default_factory=dict)
 
-    # Entrées humaines attendues par le moteur (seat_id → Future)
+    # Human inputs expected by the engine (seat_id -> Future)
     _pending: dict = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Composition
     # ------------------------------------------------------------------
     def setup_seats(self) -> None:
-        """Crée les sièges (humains + LLM) et attribue voix et personas."""
+        """Create human and LLM seats, then assign voices and personas."""
         from .audio import voices as voices_mod
 
         settings = get_settings()
@@ -70,11 +70,11 @@ class Room:
 
         total = settings.num_humans + settings.num_llms
         kinds = ["human"] * settings.num_humans + ["llm"] * settings.num_llms
-        random.shuffle(kinds)  # place des humains/LLM mélangée
+        random.shuffle(kinds)  # Mix human and LLM seats.
 
         persona_idx = 0
         for i in range(total):
-            sid = f"Joueur {letters[i]}"
+            sid = f"Player {letters[i]}"
             voice = voices[i % len(voices)]
             kind = kinds[i]
             seat = Seat(id=sid, kind=kind, voice=voice)
@@ -90,15 +90,14 @@ class Room:
         return None
 
     # ------------------------------------------------------------------
-    # Connexions
+    # Connections
     # ------------------------------------------------------------------
     async def attach(self, ws, name: str) -> Optional[str]:
-        """Rattache un websocket à un siège humain libre. Renvoie le seat_id
-        (ou None si spectateur)."""
+        """Attach a WebSocket to a free human seat, or return None for a spectator."""
         self._ws_all.add(ws)
         seat = self.free_human_seat()
         if seat is None:
-            return None  # spectateur
+            return None  # Spectator
         seat.connected = True
         seat.name = name
         self._seat_of_ws[ws] = seat.id
@@ -117,7 +116,7 @@ class Room:
         return self._seat_of_ws.get(ws)
 
     # ------------------------------------------------------------------
-    # Envoi de messages
+    # Message delivery
     # ------------------------------------------------------------------
     async def broadcast(self, msg: dict) -> None:
         dead = []
@@ -154,7 +153,7 @@ class Room:
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
-    # Sièges vivants
+    # Active seats
     # ------------------------------------------------------------------
     def alive_seats(self) -> list[Seat]:
         return [s for s in self.seats.values() if s.alive]
@@ -175,7 +174,7 @@ class Room:
         return [s for s in self.alive_seats() if s.kind == "llm"]
 
     # ------------------------------------------------------------------
-    # Entrées humaines (Future résolue par le handler WebSocket)
+    # Human inputs resolved by the WebSocket handler
     # ------------------------------------------------------------------
     def expect_input(self, seat_id: str) -> asyncio.Future:
         fut: asyncio.Future = asyncio.get_event_loop().create_future()
@@ -201,7 +200,7 @@ class RoomManager:
             room = Room(id=room_id)
             room.setup_seats()
             self._rooms[room_id] = room
-            log.info("Salle créée : %s (%d sièges)", room_id, len(room.seats))
+            log.info("Room created: %s (%d seats)", room_id, len(room.seats))
         return room
 
     def get(self, room_id: str) -> Optional[Room]:

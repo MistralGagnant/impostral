@@ -1,26 +1,26 @@
-"""Banque de questions posées en phase QUESTION.
+"""Open-ended prompts used during the QUESTION phase.
 
-Questions ouvertes, sans « bonne réponse », qui poussent chacun à révéler un
-style : c'est là que se jouent les tells (un humain se trahit par l'anecdote
-trop vécue, un LLM par la prudence trop lisse).
+There is no correct answer. Each prompt encourages players to reveal a personal
+style, creating tells: a human may sound overly lived-in, while an LLM may sound
+too cautious or polished.
 """
 from __future__ import annotations
 
 import random
 
 QUESTIONS: list[str] = [
-    "Quel est le dernier objet que vous avez tenu dans vos mains aujourd'hui ?",
-    "Décrivez une odeur qui vous rappelle votre enfance.",
-    "Si vous deviez mentir sur votre métier, lequel choisiriez-vous ?",
-    "Quelle est la chose la plus inutile que vous connaissez par cœur ?",
-    "Racontez un moment où vous avez eu tort mais refusé de l'admettre.",
-    "Quel bruit vous agace au point de vouloir quitter une pièce ?",
-    "Qu'avez-vous mangé à votre dernier repas, et l'avez-vous aimé ?",
-    "Quelle habitude avez-vous que vous jugez un peu honteuse ?",
-    "Décrivez la météo qu'il fait, là, autour de vous.",
-    "Quel conseil donneriez-vous à quelqu'un qui a peur du noir ?",
-    "Qu'est-ce qui vous a fait rire pour la dernière fois ?",
-    "Si le silence avait une couleur, laquelle serait-ce pour vous ?",
+    "What is the last object you held in your hands today?",
+    "Describe a smell that reminds you of childhood.",
+    "If you had to lie about your job, which one would you choose?",
+    "What is the most useless thing you know by heart?",
+    "Tell us about a time you were wrong but refused to admit it.",
+    "What sound annoys you enough to make you leave a room?",
+    "What did you eat for your last meal, and did you enjoy it?",
+    "What habit of yours do you find slightly embarrassing?",
+    "Describe the weather around you right now.",
+    "What advice would you give someone who is afraid of the dark?",
+    "What made you laugh most recently?",
+    "If silence had a color, what color would it be for you?",
 ]
 
 

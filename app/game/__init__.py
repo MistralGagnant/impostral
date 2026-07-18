@@ -1,1 +1,1 @@
-"""Moteur de jeu : sièges, phases, événements."""
+"""Game engine package: seats, phases, and events."""
