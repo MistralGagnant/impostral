@@ -52,6 +52,9 @@ class StubRoom:
     def llms_alive(self) -> list[StubSeat]:
         return [seat for seat in self.alive_seats() if seat.kind == "llm"]
 
+    def humans_alive(self) -> list[StubSeat]:
+        return [seat for seat in self.alive_seats() if seat.kind == "human"]
+
     def render_transcript(self) -> str:
         return ""
 
@@ -69,6 +72,33 @@ def make_engine(room: StubRoom) -> GameEngine:
 
 
 class VotingTest(unittest.IsolatedAsyncioTestCase):
+    def test_game_ends_as_soon_as_only_ais_remain(self) -> None:
+        human = StubSeat("Player A", "human")
+        human.alive = False
+        room = StubRoom([
+            human,
+            StubSeat("Player B", "llm", StubAgent()),
+            StubSeat("Player C", "llm", StubAgent()),
+        ])
+
+        self.assertTrue(make_engine(room)._check_end())
+
+    async def test_game_over_announces_ai_victory_when_no_humans_remain(self) -> None:
+        human = StubSeat("Player A", "human")
+        human.alive = False
+        room = StubRoom([
+            human,
+            StubSeat("Player B", "llm", StubAgent()),
+            StubSeat("Player C", "llm", StubAgent()),
+        ])
+        engine = make_engine(room)
+
+        with patch("app.game.state_machine.stats.record_game"):
+            await engine._game_over()
+
+        game_over = next(msg for msg in room.messages if msg["type"] == "game_over")
+        self.assertEqual(game_over["message"], "The AIs have won — no humans remain.")
+
     async def test_every_seat_votes_and_a_tie_triggers_a_restricted_runoff(self) -> None:
         agent_b = StubAgent(["Player A", "Player A"])
         agent_d = StubAgent(["Player B", "Player B"])

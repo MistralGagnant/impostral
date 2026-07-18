@@ -44,7 +44,6 @@
   const gameScreen = $("game-screen");
   const seatsEl = $("seats");
   const transcriptEl = $("transcript");
-  const logEl = $("log");
   const phaseName = $("phase-name");
   const phaseTimer = $("phase-timer");
   const phasePrompt = $("phase-prompt");
@@ -61,7 +60,6 @@
   const votePanel = $("vote-panel");
   const voteOptions = $("vote-options");
   const submitVote = $("submit-vote");
-  const questionStatus = $("question-status");
 
   let phaseCountdown = null;
   let inputCountdown = null;
@@ -316,7 +314,6 @@
     document.body.dataset.phase = msg.phase || "lobby";
     if (msg.phase) {
       phaseName.textContent = PHASE_LABEL[msg.phase] || msg.phase;
-      questionStatus.textContent = PHASE_LABEL[msg.phase] || msg.phase;
     }
     renderMissionStatus();
     renderSeats();
@@ -426,7 +423,6 @@
   function onPhaseChange(msg) {
     document.body.dataset.phase = msg.phase;
     phaseName.textContent = PHASE_LABEL[msg.phase] || msg.phase;
-    questionStatus.textContent = PHASE_LABEL[msg.phase] || msg.phase;
     if (msg.prompt) currentQuestion = msg.prompt;
     phasePrompt.textContent = currentQuestion || phaseFallback(msg.phase);
     if (msg.phase === "question") latestUtterances.clear();
@@ -439,12 +435,12 @@
 
   function phaseFallback(phase) {
     const copy = {
-      lobby: "Waiting for all players to connect.",
-      vote: "Choose carefully. The wrong signal can expose you.",
-      resolution: "Analyzing the vote…",
-      game_over: "The protocol is complete.",
+      lobby: "Waiting for all players…",
+      vote: "Who is the AI?",
+      resolution: "Counting votes…",
+      game_over: "The hunt is over.",
     };
-    return copy[phase] || "Waiting for protocol…";
+    return copy[phase] || "Waiting…";
   }
 
   function onUtterance(msg) {
@@ -497,28 +493,60 @@
     }
   }
 
-  // Textarea, microphone recording button, and submit action.
+  // Textarea plus a single action button: mic when empty, send when typing,
+  // and "stop & send" while recording.
   function buildSpeakPanel(onSend) {
     const ta = document.createElement("textarea");
-    ta.placeholder = "Type… or use the microphone";
-    const recBtn = mkBtn("● Mic", null, "rec");
+    ta.placeholder = "Type your answer… or use the mic";
+    const btn = mkBtn("● Mic", null, "rec");
     let recording = false;
-    recBtn.addEventListener("click", async () => {
-      if (!recording) {
-        const ok = await A.startRecording();
-        if (ok) { recording = true; recBtn.textContent = "■ Stop"; }
+    let sent = false;
+
+    const refresh = () => {
+      if (recording) {
+        btn.textContent = "■ Stop & send";
+        btn.className = "rec recording";
+      } else if (ta.value.trim()) {
+        btn.textContent = "Send";
+        btn.className = "";
       } else {
-        recBtn.textContent = "● Mic";
-        recording = false;
-        const b64 = await A.stopRecording();
-        recBtn.dataset.audio = b64 || "";
+        btn.textContent = "● Mic";
+        btn.className = "rec";
+      }
+    };
+
+    const send = (payload) => {
+      if (sent) return;
+      sent = true;
+      onSend(payload);
+    };
+
+    ta.addEventListener("input", refresh);
+    ta.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && ta.value.trim()) {
+        event.preventDefault();
+        send({ audio_b64: null, text: ta.value.trim() });
       }
     });
-    const sendBtn = mkBtn("Send", () =>
-      onSend({ audio_b64: recBtn.dataset.audio || null, text: ta.value.trim() })
-    );
-    inputControls.append(ta, recBtn, sendBtn);
-    return { textarea: ta, recBtn };
+    btn.addEventListener("click", async () => {
+      if (recording) {
+        recording = false;
+        const b64 = await A.stopRecording();
+        send({ audio_b64: b64 || null, text: ta.value.trim() });
+        return;
+      }
+      if (ta.value.trim()) {
+        send({ audio_b64: null, text: ta.value.trim() });
+        return;
+      }
+      const ok = await A.startRecording();
+      if (ok) recording = true;
+      else ta.placeholder = "Mic unavailable — type your answer";
+      refresh();
+    });
+
+    inputControls.append(ta, btn);
+    return { textarea: ta, btn };
   }
 
   function buildVotePanel(targets) {
@@ -569,6 +597,48 @@
 
   function onElimination(msg) {
     markDead(msg.seat, msg.role);
+    showElimination(msg.seat, msg.role);
+  }
+
+  // Full-arena overlay: eliminated avatar, red stamp, and role reveal.
+  function showElimination(seatId, role) {
+    const arena = document.querySelector(".arena-viz");
+    if (!arena) return;
+    arena.querySelector(".elim-overlay")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.className = "elim-overlay";
+    const card = document.createElement("div");
+    card.className = "elim-card";
+
+    const index = Math.max(0, seats.findIndex((seat) => seat.id === seatId));
+    const img = document.createElement("img");
+    img.src = `/assets/characters/character_${String((index % 10) + 1).padStart(2, "0")}.png`;
+    img.alt = "";
+
+    const name = document.createElement("span");
+    name.className = "elim-name";
+    name.textContent = seatId;
+
+    const stamp = document.createElement("span");
+    stamp.className = "elim-stamp";
+    stamp.textContent = "Eliminated";
+
+    card.append(img, name, stamp);
+    if (role) {
+      const reveal = document.createElement("span");
+      reveal.className = "elim-role " + (role === "human" ? "is-human" : "is-llm");
+      reveal.append("They were ");
+      const b = document.createElement("b");
+      b.textContent = role === "human" ? "human" : "an AI";
+      reveal.append(b);
+      card.append(reveal);
+    }
+    overlay.appendChild(card);
+    arena.appendChild(overlay);
+
+    setTimeout(() => overlay.classList.add("leaving"), 3400);
+    setTimeout(() => overlay.remove(), 3900);
   }
 
   function onGameOver(msg) {
@@ -584,14 +654,16 @@
     const banner = document.createElement("div");
     banner.className = "winner";
     const winners = msg.winners || [];
-    banner.textContent = winners.length === 1
+    banner.textContent = msg.message || (winners.length === 1
       ? `${winners[0]} wins the game!`
       : winners.length > 1
         ? `${winners.join(", ")} survive and tie.`
-        : "Game over.";
-    phasePrompt.textContent = "";
+        : "Game over.");
+    phasePrompt.textContent = "The hunt is over.";
+    const arena = document.querySelector(".arena-viz");
+    arena.querySelector(".elim-overlay")?.remove();
     document.querySelector(".winner")?.remove();
-    document.querySelector(".arena-shell").appendChild(banner);
+    arena.appendChild(banner);
   }
 
   // ------------------------------------------------------------------
@@ -634,11 +706,14 @@
     return b;
   }
 
+  // System messages share the live feed with player utterances.
   function addLog(text) {
-    const d = document.createElement("div");
+    transcriptEl.querySelector(".transcript-empty")?.remove();
+    const d = document.createElement("p");
+    d.className = "utt sys";
     d.textContent = text;
-    logEl.appendChild(d);
-    logEl.scrollTop = logEl.scrollHeight;
+    transcriptEl.appendChild(d);
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
   }
 
 })();
