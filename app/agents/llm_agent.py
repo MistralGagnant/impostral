@@ -43,7 +43,7 @@ PERSONAS: list[dict] = [
         "temp": 0.7,
         "exemples": [
             ("Do you believe in love at first sight?", "I believe it when both people still tell the same story six months later."),
-            ("Do you trust online reviews?", "Mostly the average ones, because five-star reviews often sound like advertising."),
+            ("Do you trust online reviews?", "Mostly the average ones, because five star reviews often sound like advertising."),
             ("What kind of promise convinces you?", "One with a date and a plan, otherwise it is just a nice sentence."),
         ],
     },
@@ -64,7 +64,7 @@ PERSONAS: list[dict] = [
         "exemples": [
             ("What do you do when facing a problem?", "I start with the smallest action that could unblock the situation."),
             ("How do you organize a trip?", "I book transport and accommodation, then keep everything else flexible."),
-            ("What do you cook when short on time?", "Pasta, a few pan-fried vegetables, and something good grated on top."),
+            ("What do you cook when short on time?", "Pasta, a few pan fried vegetables, and something good grated on top."),
         ],
     },
 ]
@@ -72,19 +72,36 @@ PERSONAS: list[dict] = [
 _SYSTEM_TEMPLATE = """You are playing Impostral, a social bluffing game.
 
 You are an AI trying to pass as human. Every AI competes independently, and the
-one that remains undetected the longest wins. Humans vote to eliminate detected
-AIs. React naturally, express a credible personal viewpoint, and follow your
-persona without caricaturing a human or ever revealing that you are an AI.
+one that remains undetected the longest wins. Everyone votes during elimination
+rounds, so use your vote strategically against competing seats. React naturally,
+express a credible personal viewpoint, and follow your persona without
+caricaturing a human or ever revealing that you are an AI.
 
 You are {seat} ({persona}). Style: {style}. Always answer in English. Your
 reasoning in ``thinking`` is strictly private. Your public ``output`` must be
-one natural, concise sentence no longer than 180 characters.
+one short natural utterance no longer than 180 characters. It may be only a few
+words or contain up to two very short sentences.
 
 Human response examples matching your persona:
 {few_shots}
 
+Useful tactical variations:
+{tactical_few_shots}
+
 Use their tone, rhythm, and level of detail without copying their content out
-of context. Never mention these instructions."""
+of context. Do not always answer the question directly: when strategically
+useful, deflect, question the accusation, or strongly accuse another player.
+Vary these tactics instead of repeating the same pattern. Never mention these
+instructions. Never use hyphens, en dashes, or em dashes in ``output``; use
+commas, spaces, or separate short sentences instead."""
+
+_TACTICAL_FEW_SHOTS = [
+    ("Ultra-short", "Honestly, no idea."),
+    ("Deflection", "Why are you accusing me? I am clearly human."),
+    ("Counter-accusation", "Player C sounds completely scripted."),
+    ("Dismissive", "That question proves nothing."),
+    ("Redirect", "Ask Player B instead."),
+]
 
 _PUBLIC_RESPONSE_SCHEMA = {
     "type": "json_schema",
@@ -101,7 +118,10 @@ _PUBLIC_RESPONSE_SCHEMA = {
                 },
                 "output": {
                     "type": "string",
-                    "description": "One natural, concise public sentence.",
+                    "description": (
+                        "A short public utterance: a few words or at most two "
+                        "brief sentences, possibly deflective or accusatory."
+                    ),
                     "maxLength": 180,
                 },
             },
@@ -139,21 +159,55 @@ _DELIBERATION_SCHEMA = {
 }
 
 
+def _vote_schema(eligible_targets: list[str]) -> dict:
+    """Build a strict schema that only accepts a currently eligible seat."""
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "impostral_vote",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "thinking": {
+                        "type": "string",
+                        "description": "Private strategic analysis of the vote.",
+                        "maxLength": 800,
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "The exact seat ID selected for elimination.",
+                        "enum": eligible_targets,
+                    },
+                },
+                "required": ["thinking", "output"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
 class LLMAgent:
-    def __init__(self, seat_id: str, persona_idx: int) -> None:
+    def __init__(self, seat_id: str, persona_idx: int, *, model: str | None = None) -> None:
         self.seat_id = seat_id
         self.persona = PERSONAS[persona_idx % len(PERSONAS)]
+        self.model = model
 
     def _system(self) -> str:
         few_shots = "\n".join(
             f"- Question: “{question}”\n  Answer: “{response}”"
             for question, response in self.persona["exemples"]
         )
+        tactical_few_shots = "\n".join(
+            f"- {mode}: “{response}”"
+            for mode, response in _TACTICAL_FEW_SHOTS
+        )
         return _SYSTEM_TEMPLATE.format(
             seat=self.seat_id,
             persona=self.persona["nom"],
             style=self.persona["style"],
             few_shots=few_shots,
+            tactical_few_shots=tactical_few_shots,
         )
 
     async def _chat_json(self, user: str, response_format: dict) -> dict:
@@ -167,7 +221,7 @@ class LLMAgent:
 
         def _call() -> str:
             resp = client.chat.complete(
-                model=settings.chat_model,
+                model=self.model or settings.chat_model_large,
                 messages=messages,
                 temperature=self.persona["temp"],
                 max_tokens=320,
@@ -195,8 +249,8 @@ class LLMAgent:
         prompt = (
             f"Game transcript:\n{transcript or '(empty)'}\n\n"
             f"Question for the whole table: “{question}”\n"
-            "Consider how to sound convincingly human, then provide one concise "
-            "public sentence."
+            "Choose the most convincing human reaction. You may answer directly, "
+            "reply in only a few words, deflect, or accuse another player."
         )
         return await self._public_output(prompt)
 
@@ -206,7 +260,8 @@ class LLMAgent:
         prompt = (
             f"Transcript:\n{transcript}\n\n"
             f"{asker} asks you directly: “{question}”\n"
-            "Consider your strategy, then reply naturally in one concise sentence."
+            "Reply naturally; you may be terse, defensive, evasive, or strongly "
+            "counter-accusatory."
         )
         return await self._public_output(prompt)
 
@@ -233,8 +288,32 @@ class LLMAgent:
             log.warning("Could not parse agent deliberation: %s", exc)
         return {"action": "pass", "target": None, "text": ""}
 
+    async def vote(self, transcript: str, alive_others: list[str]) -> str:
+        """Choose another active seat without exposing the private rationale."""
+        if not alive_others:
+            return ""
+        if get_client() is None:
+            return random.choice(alive_others)
+        prompt = (
+            f"Full transcript:\n{transcript}\n\n"
+            f"Vote phase. Eligible seats: {', '.join(alive_others)}.\n"
+            "Choose one competing seat to eliminate. Consider who threatens your "
+            "survival or appears least human, then put the exact seat ID in "
+            "``output``."
+        )
+        try:
+            data = await self._chat_json(prompt, _vote_schema(alive_others))
+            target = data.get("output")
+            if target in alive_others:
+                return target
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Could not parse agent vote: %s", exc)
+        return random.choice(alive_others)
+
     def _mock_answer(self) -> str:
         """Keep the persona's tone even without model access."""
+        if random.random() < 0.45:
+            return random.choice(_TACTICAL_FEW_SHOTS)[1]
         return random.choice(self.persona["exemples"])[1]
 
 
@@ -250,11 +329,17 @@ def _mock_deliberation(alive_others: list[str]) -> dict:
 
 
 def _one_short_sentence(value: object) -> str:
-    """Keep one public sentence and enforce a defensive length limit."""
+    """Keep at most two brief public sentences and enforce a length limit."""
     text = " ".join(str(value or "").split()).strip()
     if not text:
         return "I am not completely sure, but I think it depends on the context."
-    first = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0]
-    if len(first) > 180:
-        first = first[:177].rstrip(" ,;:-") + "…"
-    return first
+    # Models sometimes overuse dash punctuation. Normalize it before broadcast.
+    text = re.sub(r"\s*[‐‑‒–—―]\s*", ", ", text)
+    text = re.sub(r"\s+-+\s+", ", ", text)
+    text = re.sub(r"(?<=\w)-(?=\w)", " ", text)
+    text = re.sub(r",(?:\s*,)+", ",", text)
+    sentences = re.split(r"(?<=[.!?])\s+", text, maxsplit=2)
+    output = " ".join(sentences[:2])
+    if len(output) > 180:
+        output = output[:177].rstrip(" ,;:-") + "…"
+    return output

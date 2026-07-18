@@ -5,7 +5,7 @@ Key properties:
 - Answers are collected for the full window and revealed in random order at a
   fixed cadence, hiding response-time tells.
 - Agents compete independently to pass as human.
-- Only humans vote, and a wrong accusation does not eliminate a human.
+- Humans and agents vote; selecting a human wastes the round without eliminating them.
 """
 from __future__ import annotations
 
@@ -178,7 +178,7 @@ class GameEngine:
         await self.room.broadcast(events.srv_phase_change(phase=Phase.VOTE.value, deadline=dur))
         await self._broadcast_state()
 
-        voters = self.room.humans_alive()
+        voters = self.room.alive_seats()
         tasks = [asyncio.ensure_future(self._collect_vote(s, dur)) for s in voters]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -193,6 +193,9 @@ class GameEngine:
 
     async def _collect_vote(self, seat, dur: int) -> tuple[str, Optional[str]]:
         others = self.room.alive_ids(exclude=seat.id)
+        if seat.kind == "llm":
+            target = await seat.agent.vote(self.room.render_transcript(), others)
+            return seat.id, target if target in others else None
         payload = await self._request_human(seat, mode="vote", dur=dur, targets=others)
         target = payload.get("target") if payload else None
         return seat.id, target if target in others else None
@@ -224,7 +227,7 @@ class GameEngine:
                     await self._system(f"{eliminated} is out.")
             else:
                 await self._system(
-                    f"Wrong accusation: {eliminated} is human and stays in the game."
+                    f"The vote missed: {eliminated} is human and stays in the game."
                 )
         else:
             await self._system("No one is eliminated this round.")

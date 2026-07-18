@@ -79,7 +79,8 @@ class Room:
             kind = kinds[i]
             seat = Seat(id=sid, kind=kind, voice=voice)
             if kind == "llm":
-                seat.agent = LLMAgent(sid, persona_idx)
+                model = settings.agent_models[persona_idx % len(settings.agent_models)]
+                seat.agent = LLMAgent(sid, persona_idx, model=model)
                 persona_idx += 1
             self.seats[sid] = seat
 

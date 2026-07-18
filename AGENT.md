@@ -1,8 +1,8 @@
 # AGENT.md — Impostral
 
 Social bluffing game where **humans** and **Mistral LLM agents** share a room.
-Every AI competes independently to pass as human, while humans vote to expose
-them. The last AI eliminated wins. Each round follows:
+Every AI competes independently to pass as human, while all active players vote
+during elimination rounds. The last AI eliminated wins. Each round follows:
 **question -> deliberation -> vote -> resolution**.
 
 Status: **functional POC**, validated end to end with chat, Voxtral STT, and TTS.
@@ -39,15 +39,20 @@ The first browser interaction unlocks audio playback under autoplay policies.
 
 | Role | Model | Environment override |
 |------|-------|----------------------|
-| Agent reasoning | `mistral-large-latest` | `IMPOSTRAL_CHAT_MODEL` |
+| Large agent | `mistral-large-latest` | `IMPOSTRAL_CHAT_MODEL_LARGE` |
+| Medium agent | `mistral-medium-latest` | `IMPOSTRAL_CHAT_MODEL_MEDIUM` |
+| Small agent | `mistral-small-latest` | `IMPOSTRAL_CHAT_MODEL_SMALL` |
+| Ministral agent | `ministral-8b-latest` | `IMPOSTRAL_CHAT_MODEL_MINISTRAL` |
 | STT | `voxtral-mini-latest` | `IMPOSTRAL_STT_MODEL` |
 | TTS | `voxtral-mini-tts-latest` | `IMPOSTRAL_TTS_MODEL` |
 
-All agents share the same chat model but use different personas, temperatures,
-and persona-specific human few-shot examples from `PERSONAS` in
+The default room has two humans and four agents, using Large, Medium, Small, and
+Ministral respectively. Agents also use different personas, temperatures, and
+persona-specific human few-shot examples from `PERSONAS` in
 `app/agents/llm_agent.py`. Guided decoding enforces a strict JSON Schema with
-private `thinking` and one public `output` sentence of at most 180 characters.
-Only `output` enters the transcript.
+private `thinking` and one public `output` utterance of at most 180 characters
+and two brief sentences. Outputs may be ultra-short, deflective, or strongly
+accusatory. Only `output` enters the transcript.
 
 ## `mistralai` SDK version caveat
 
@@ -104,7 +109,7 @@ never receive role information; they only see the transcript.
 
 ## Win conditions
 
-- Only humans vote. Accusing a human wastes the round without eliminating them.
+- Humans and AIs vote. Selecting a human wastes the round without eliminating them.
 - Once every AI is eliminated, the last AI eliminated wins.
 - At `max_rounds`, all undetected AIs tie.
 

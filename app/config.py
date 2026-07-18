@@ -23,13 +23,16 @@ class Settings(BaseSettings):
     # --- Mistral ---------------------------------------------------------
     # The API key follows the standard unprefixed MISTRAL_API_KEY convention.
     mistral_api_key: str = Field("", alias="MISTRAL_API_KEY")
-    chat_model: str = "mistral-large-latest"
+    chat_model_large: str = "mistral-large-latest"
+    chat_model_medium: str = "mistral-medium-latest"
+    chat_model_small: str = "mistral-small-latest"
+    chat_model_ministral: str = "ministral-8b-latest"
     stt_model: str = "voxtral-mini-latest"
     tts_model: str = "voxtral-mini-tts-latest"
 
     # --- Game composition ------------------------------------------------
     num_humans: int = 2
-    num_llms: int = 3
+    num_llms: int = 4
     max_rounds: int = 5
     reveal_role_on_elimination: bool = True
 
@@ -52,6 +55,16 @@ class Settings(BaseSettings):
     def mock_mode(self) -> bool:
         """Return True when no API key is set and the game should use mock mode."""
         return not self.mistral_api_key.strip()
+
+    @property
+    def agent_models(self) -> list[str]:
+        """Return the four model tiers assigned to agents in seat order."""
+        return [
+            self.chat_model_large,
+            self.chat_model_medium,
+            self.chat_model_small,
+            self.chat_model_ministral,
+        ]
 
 
 @lru_cache
