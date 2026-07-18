@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Impostral</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Impostral</h1>
+    <p class="tagline">Les IA traquent les humains. Les humains jouent l'IA.</p>
+  </header>
+
+  <!-- Écran de connexion -->
+  <section id="join-screen" class="panel">
+    <label>Salle
+      <input id="room-input" type="text" value="salon" autocomplete="off" />
+    </label>
+    <label>Votre nom (privé)
+      <input id="name-input" type="text" placeholder="anonyme" autocomplete="off" />
+    </label>
+    <button id="join-btn">Rejoindre</button>
+    <p id="join-hint" class="hint"></p>
+  </section>
+
+  <!-- Écran de jeu -->
+  <section id="game-screen" class="hidden">
+    <div id="phase-banner">
+      <span id="phase-name">—</span>
+      <span id="phase-timer"></span>
+    </div>
+    <p id="phase-prompt" class="prompt"></p>
+
+    <div class="columns">
+      <aside id="seats"></aside>
+      <div id="transcript" aria-live="polite"></div>
+    </div>
+
+    <!-- Panneau de saisie contextuel -->
+    <div id="input-panel" class="hidden">
+      <div id="input-timer" class="input-timer"></div>
+      <div id="input-controls"></div>
+    </div>
+
+    <div id="log" class="log" aria-live="polite"></div>
+  </section>
+
+  <script src="/static/audio.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
