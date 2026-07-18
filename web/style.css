@@ -392,6 +392,8 @@ input:focus, textarea:focus, select:focus {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.seat .role.is-llm { color: var(--orange-bright); text-transform: none; }
+.seat .role.is-human { color: var(--gold); }
 .seat-answer {
   display: -webkit-box;
   overflow: hidden;
@@ -561,7 +563,7 @@ body[data-phase="game_over"] .question-frame { display: none; }
 }
 .elim-role { color: var(--muted); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; }
 .elim-role b { font-weight: 800; }
-.elim-role.is-llm b { color: var(--orange-bright); }
+.elim-role.is-llm b { color: var(--orange-bright); text-transform: none; }
 .elim-role.is-human b { color: var(--gold); }
 
 .winner {

@@ -227,8 +227,10 @@
       name.className = "seat-name";
       name.textContent = s.id;
       const role = document.createElement("span");
-      role.className = "role";
-      role.textContent = s.role ? (s.role === "human" ? "human detected" : "AI detected") : "identity masked";
+      role.className = "role" + (s.role ? (s.role === "human" ? " is-human" : " is-llm") : "");
+      role.textContent = s.role
+        ? (s.role === "human" ? "Human" : (prettyModel(s.model) || "AI"))
+        : "identity masked";
       meta.append(name, role);
       const answer = document.createElement("span");
       answer.className = "seat-answer";
@@ -239,10 +241,15 @@
     renderMissionStatus();
   }
 
-  function markDead(seatId, role) {
+  function markDead(seatId, role, model) {
     const s = seats.find((x) => x.id === seatId);
-    if (s) { s.alive = false; if (role) s.role = role; }
+    if (s) { s.alive = false; if (role) s.role = role; if (model) s.model = model; }
     renderSeats();
+  }
+
+  // "mistral-large-latest" -> "mistral-large" for a cleaner reveal label.
+  function prettyModel(model) {
+    return model ? model.replace(/-latest$/, "") : "";
   }
 
   function flashSpeaking(seatId) {
@@ -439,12 +446,12 @@
   }
 
   function onElimination(msg) {
-    markDead(msg.seat, msg.role);
-    showElimination(msg.seat, msg.role);
+    markDead(msg.seat, msg.role, msg.model);
+    showElimination(msg.seat, msg.role, msg.model);
   }
 
   // Full-arena overlay: eliminated avatar, red stamp, and role reveal.
-  function showElimination(seatId, role) {
+  function showElimination(seatId, role, model) {
     const arena = document.querySelector(".arena-viz");
     if (!arena) return;
     arena.querySelector(".elim-overlay")?.remove();
@@ -473,7 +480,7 @@
       reveal.className = "elim-role " + (role === "human" ? "is-human" : "is-llm");
       reveal.append("They were ");
       const b = document.createElement("b");
-      b.textContent = role === "human" ? "human" : "an AI";
+      b.textContent = role === "human" ? "human" : (prettyModel(model) || "an AI");
       reveal.append(b);
       card.append(reveal);
     }
@@ -490,7 +497,8 @@
     document.body.dataset.phase = "game_over";
     phaseName.textContent = "Game over";
     phaseTimer.textContent = "";
-    seats = seats.map((s) => ({ ...s, role: msg.roles[s.id] }));
+    const models = msg.models || {};
+    seats = seats.map((s) => ({ ...s, role: msg.roles[s.id], model: models[s.id] || s.model }));
     renderSeats();
     const banner = document.createElement("div");
     banner.className = "winner";
