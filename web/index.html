@@ -83,55 +83,74 @@
 
       <!-- Game screen -->
       <section id="game-screen" class="game-screen hidden">
-        <div class="game-topbar">
-          <div>
-            <span class="hud-label">Active phase</span>
-            <div id="phase-banner">
-              <span id="phase-name">—</span>
-              <span id="phase-timer"></span>
+        <div class="game-layout">
+          <aside class="mission-panel tactical-panel" aria-label="Round status">
+            <div class="metric metric--round">
+              <span>Round</span>
+              <strong><b id="round-current">0</b><small>/ <i id="round-total">5</i></small></strong>
             </div>
-          </div>
-          <div class="round-status">
-            <span>Secure channel</span>
-            <i></i>
-          </div>
-        </div>
-
-        <div class="prompt-frame">
-          <span class="prompt-mark" aria-hidden="true">?</span>
-          <p id="phase-prompt" class="prompt">Waiting for protocol…</p>
-        </div>
-
-        <div class="columns">
-          <aside class="players-panel">
-            <div class="panel-title">
+            <div class="metric metric--players">
               <span>Players</span>
-              <small>Signal</small>
+              <div class="players-glyph" aria-hidden="true"><i></i><i></i><i></i></div>
+              <strong><b id="players-alive">0</b><small>/ <i id="players-total">0</i></small></strong>
             </div>
-            <div id="seats"></div>
+            <div class="metric metric--time">
+              <span>Time left</span>
+              <div class="time-dial">
+                <div id="phase-timer">—</div>
+                <small>sec</small>
+              </div>
+            </div>
+            <div class="phase-readout">
+              <span>Active phase</span>
+              <strong id="phase-name">Lobby</strong>
+            </div>
+            <div id="log" class="log" aria-live="polite"></div>
           </aside>
 
-          <section class="transcript-panel">
-            <div class="panel-title">
-              <span>Discussion channel</span>
-              <small>Anonymous feed</small>
+          <section class="arena-shell" aria-label="Game arena">
+            <div class="arena-grid" aria-hidden="true">
+              <span class="orbit orbit--one"></span>
+              <span class="orbit orbit--two"></span>
+              <span class="orbit orbit--three"></span>
+              <span class="axis axis--x"></span>
+              <span class="axis axis--y"></span>
             </div>
-            <div id="transcript" aria-live="polite">
-              <p class="transcript-empty">Messages will appear here.</p>
+
+            <div id="seats" aria-label="Players"></div>
+
+            <div class="question-frame">
+              <span class="question-label">Question</span>
+              <p id="phase-prompt" class="prompt">Waiting for protocol…</p>
+              <span class="question-phase">// <b id="question-status">Stand by</b></span>
+            </div>
+
+            <section class="arena-feed" aria-label="Discussion channel">
+              <div id="transcript" aria-live="polite">
+                <p class="transcript-empty">Anonymous channel ready.</p>
+              </div>
+            </section>
+
+            <!-- Contextual speaking/deliberation input -->
+            <div id="input-panel" class="hidden">
+              <div class="input-header">
+                <span>Your action</span>
+                <div id="input-timer" class="input-timer"></div>
+              </div>
+              <div id="input-controls"></div>
             </div>
           </section>
-        </div>
 
-        <!-- Contextual input panel -->
-        <div id="input-panel" class="hidden">
-          <div class="input-header">
-            <span>Your action</span>
-            <div id="input-timer" class="input-timer"></div>
-          </div>
-          <div id="input-controls"></div>
+          <!-- Deliberately absent until the server requests a vote. -->
+          <aside id="vote-panel" class="vote-panel tactical-panel hidden" aria-label="Vote">
+            <div class="vote-heading">
+              <span>Vote</span>
+              <p>Select the player you think is human.</p>
+            </div>
+            <div id="vote-options" class="vote-options" role="radiogroup" aria-label="Players"></div>
+            <button id="submit-vote" type="button" disabled>Submit vote</button>
+          </aside>
         </div>
-
-        <div id="log" class="log" aria-live="polite"></div>
       </section>
     </main>
 
