@@ -19,9 +19,11 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("impostral")
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 app = FastAPI(title="Impostral")
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 
 @app.get("/")

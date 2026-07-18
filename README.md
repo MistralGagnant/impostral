@@ -1,10 +1,11 @@
 # Impostral
 
-A web-based social deduction game **humans vs LLM**, inspired by a Jubilee video.
+A web-based social bluffing game **humans vs LLM**, inspired by a Jubilee video.
 
 Humans and LLM agents (Mistral) share a room. In each round, a **question** is asked to everyone,
-followed by a **deliberation** where players discuss, and then a **vote** to eliminate someone.
-The goal of the AIs: uncover and eliminate humans. The goal of the humans: pass as AIs.
+followed by a **deliberation** where players discuss, and then a human **vote** to identify an AI.
+Each AI competes independently and tries to pass as human. The winning AI is the last one eliminated
+by the humans; surviving AIs tie if the round limit is reached.
 
 **Core mechanic — voice anonymization**: any speech (human or LLM) is transcribed and resynthesized
 into **Voxtral synthetic voice fixed by seat**. It is impossible to distinguish a human from an AI by

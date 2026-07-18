@@ -1,8 +1,8 @@
 # AGENT.md — Impostral
 
-Jeu de déduction sociale : des **humains** et des **agents LLM Mistral** cohabitent dans une salle.
-Les LLM cherchent à démasquer et éliminer les humains ; les humains cherchent à passer pour des IA
-(esprit vidéo Jubilee). Déroulé par manches : **question → délibération → vote → résolution**.
+Jeu de bluff social : des **humains** et des **agents LLM Mistral** cohabitent dans une salle.
+Chaque IA cherche à passer pour un humain et joue pour elle-même ; les humains votent pour les
+démasquer. La dernière IA éliminée gagne. Déroulé : **question → délibération → vote → résolution**.
 
 État : **POC fonctionnel**, validé de bout en bout en mode réel (chat + STT + TTS Voxtral).
 
@@ -40,7 +40,9 @@ Le premier clic dans l'onglet débloque l'audio du navigateur (politique d'autop
 | TTS (synthèse voix) | `voxtral-mini-tts-latest` | `IMPOSTRAL_TTS_MODEL` |
 
 Tous les agents partagent le même modèle chat ; ils se distinguent par leur **persona** et leur
-**température** (`PERSONAS` dans `app/agents/llm_agent.py`).
+**température** (`PERSONAS` dans `app/agents/llm_agent.py`). Le guided decoding impose un JSON
+Schema avec un raisonnement privé `thinking` et une phrase publique `output` de 180 caractères
+maximum. Seul `output` rejoint le transcript.
 
 ## SDK `mistralai` (piège de version)
 
@@ -89,14 +91,16 @@ révélées **groupées, dans un ordre aléatoire**, à cadence fixe (`reveal_ga
   `direct_question{target, audio_b64|text}` (target vide = passer), `submit_vote{target}`.
 - **serveur→client** : `room_state`, `phase_change{phase, deadline, prompt}`,
   `utterance{seat, text, audio_url, context}`, `request_input{mode, deadline, targets}`,
-  `vote_result{tally, eliminated}`, `elimination{seat, role}`, `game_over{winner, roles}`, `system`.
+  `vote_result{tally, eliminated}`, `elimination{seat, role}`,
+  `game_over{winner, winners, roles}`, `system`.
 
 `deadline` est un nombre de **secondes restantes** (compte à rebours côté client).
 
 ## Conditions de fin
 
-- Les **LLM gagnent** si tous les humains sont éliminés.
-- Les **humains gagnent** s'ils survivent à `max_rounds` manches, ou si tous les LLM sont éliminés.
+- Seuls les humains votent. Une accusation contre un humain fait perdre la manche sans l'éliminer.
+- Quand toutes les IA sont éliminées, la dernière IA sortie gagne.
+- À `max_rounds`, les IA encore en jeu terminent ex æquo.
 
 ## Pistes d'évolution
 

@@ -8,8 +8,8 @@
 </head>
 <body>
   <header>
-    <h1>Impostral</h1>
-    <p class="tagline">Les IA traquent les humains. Les humains jouent l'IA.</p>
+    <img class="brand-logo" src="/assets/impostral.png" alt="Impostral" />
+    <p class="tagline">Les IA jouent les humains. Démasquez-les avant qu’elles ne vous trompent.</p>
   </header>
 
   <!-- Écran de connexion -->
@@ -32,9 +32,23 @@
     </div>
     <p id="phase-prompt" class="prompt"></p>
 
-    <div class="columns">
-      <aside id="seats"></aside>
-      <div id="transcript" aria-live="polite"></div>
+    <div class="game-layout">
+      <aside class="players-panel">
+        <div class="section-heading">
+          <span>Participants</span>
+          <span id="alive-count" class="counter"></span>
+        </div>
+        <div id="seats"></div>
+      </aside>
+      <main class="conversation-panel">
+        <div class="section-heading">
+          <span>Conversation</span>
+          <span class="live-indicator"><i></i> en direct</span>
+        </div>
+        <div id="transcript" aria-live="polite">
+          <div class="transcript-empty">La conversation apparaîtra ici.</div>
+        </div>
+      </main>
     </div>
 
     <!-- Panneau de saisie contextuel -->

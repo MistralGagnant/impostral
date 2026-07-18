@@ -6,7 +6,8 @@ Points clés :
   toute la fenêtre puis révélées groupées, dans un ordre aléatoire, avec une
   cadence fixe (`reveal_gap_seconds`). Un LLM ne « répond » jamais plus vite qu'un
   humain.
-- Les agents ignorent qui est humain : ils ne reçoivent que le transcript.
+- Les agents cherchent individuellement à passer pour humains.
+- Seuls les humains votent ; une accusation erronée ne les élimine pas.
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ class GameEngine:
         self.room = room
         self.settings = get_settings()
         self.used_questions: set[str] = set()
+        self.eliminated_llms: list[str] = []
 
     # ------------------------------------------------------------------
     # Boucle principale
@@ -178,8 +180,8 @@ class GameEngine:
         await self.room.broadcast(events.srv_phase_change(phase=Phase.VOTE.value, deadline=dur))
         await self._broadcast_state()
 
-        alive = self.room.alive_seats()
-        tasks = [asyncio.ensure_future(self._collect_vote(s, dur)) for s in alive]
+        voters = self.room.humans_alive()
+        tasks = [asyncio.ensure_future(self._collect_vote(s, dur)) for s in voters]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         tally: dict[str, int] = {}
@@ -193,8 +195,6 @@ class GameEngine:
 
     async def _collect_vote(self, seat, dur: int) -> tuple[str, Optional[str]]:
         others = self.room.alive_ids(exclude=seat.id)
-        if seat.kind == "llm":
-            return seat.id, await seat.agent.vote(self.room.render_transcript(), others)
         payload = await self._request_human(seat, mode="vote", dur=dur, targets=others)
         target = payload.get("target") if payload else None
         return seat.id, target if target in others else None
@@ -215,14 +215,19 @@ class GameEngine:
         eliminated = getattr(self, "_pending_eliminated", None)
         if eliminated and eliminated in self.room.seats:
             seat = self.room.seats[eliminated]
-            seat.alive = False
-            role = seat.kind if self.settings.reveal_role_on_elimination else None
-            await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
-            if role:
-                label = "un HUMAIN" if role == "human" else "une IA"
-                await self._system(f"{eliminated} est éliminé… c'était {label}.")
+            if seat.kind == "llm":
+                seat.alive = False
+                self.eliminated_llms.append(seat.id)
+                role = seat.kind if self.settings.reveal_role_on_elimination else None
+                await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
+                if role:
+                    await self._system(f"{eliminated} est éliminé… c'était une IA.")
+                else:
+                    await self._system(f"{eliminated} est éliminé.")
             else:
-                await self._system(f"{eliminated} est éliminé.")
+                await self._system(
+                    f"Mauvaise accusation : {eliminated} est humain et reste en jeu."
+                )
         else:
             await self._system("Personne n'est éliminé cette manche.")
         await self._broadcast_state()
@@ -232,19 +237,30 @@ class GameEngine:
     # Fin de partie
     # ------------------------------------------------------------------
     def _check_end(self) -> bool:
-        return not self.room.humans_alive() or not self.room.llms_alive()
+        return not self.room.llms_alive()
 
     async def _game_over(self) -> None:
         self.room.phase = Phase.GAME_OVER
-        if not self.room.humans_alive():
-            winner = "llms"
+        survivors = [s.id for s in self.room.llms_alive()]
+        if survivors:
+            winners = survivors
+            result = (
+                f"{', '.join(winners)} n'ont pas été démasqués et terminent ex æquo."
+                if len(winners) > 1
+                else f"{winners[0]} n'a pas été démasqué et remporte la partie."
+            )
         else:
-            winner = "humans"  # humains survivants (ou tous les LLM éliminés)
+            winners = self.eliminated_llms[-1:]  # dernière IA éliminée
+            result = (
+                f"{winners[0]} est la dernière IA éliminée et remporte la partie."
+                if winners
+                else "Aucune IA gagnante n'a pu être déterminée."
+            )
         roles = {s.id: s.kind for s in self.room.seats.values()}
-        await self.room.broadcast(events.srv_game_over(winner=winner, roles=roles))
-        msg = ("Les IA ont éliminé tous les humains." if winner == "llms"
-               else "Des humains ont survécu — ils l'emportent !")
-        await self._system("Partie terminée. " + msg)
+        await self.room.broadcast(
+            events.srv_game_over(winner="agents", winners=winners, roles=roles)
+        )
+        await self._system("Partie terminée. " + result)
 
     # ------------------------------------------------------------------
     # Utilitaires
