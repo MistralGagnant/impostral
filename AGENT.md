@@ -1,8 +1,9 @@
 # AGENT.md — Impostral
 
-Social deduction game where **humans** and **Mistral LLM agents** share a room.
-LLMs try to identify and eliminate humans; humans try to pass as AI, inspired by
-a Jubilee video. Each round follows: **question -> deliberation -> vote -> resolution**.
+Social bluffing game where **humans** and **Mistral LLM agents** share a room.
+Every AI competes independently to pass as human, while all active players vote
+during elimination rounds. The last AI eliminated wins. Each round follows:
+**question -> deliberation -> vote -> resolution**.
 
 Status: **functional POC**, validated end to end with chat, Voxtral STT, and TTS.
 
@@ -38,25 +39,27 @@ The first browser interaction unlocks audio playback under autoplay policies.
 
 | Role | Model | Environment override |
 |------|-------|----------------------|
-| Agent reasoning | `mistral-large-latest` (default) | `IMPOSTRAL_CHAT_MODEL` |
-| Agent model pool | *(empty → single chat model)* | `IMPOSTRAL_MODEL_POOL` |
+| Large agent | `mistral-large-latest` | `IMPOSTRAL_CHAT_MODEL_LARGE` |
+| Medium agent | `mistral-medium-latest` | `IMPOSTRAL_CHAT_MODEL_MEDIUM` |
+| Small agent | `mistral-small-latest` | `IMPOSTRAL_CHAT_MODEL_SMALL` |
+| Ministral agent | `ministral-8b-latest` | `IMPOSTRAL_CHAT_MODEL_MINISTRAL` |
 | STT | `voxtral-mini-latest` | `IMPOSTRAL_STT_MODEL` |
 | TTS | `voxtral-mini-tts-latest` | `IMPOSTRAL_TTS_MODEL` |
 
-Agents differ by persona and temperature (`PERSONAS` in
-`app/agents/llm_agent.py`). When `IMPOSTRAL_MODEL_POOL` is set (comma-separated),
-each LLM seat is assigned a **different model** from the pool, shuffled each game,
-so several models compete in the same game. Left empty, all seats use
-`IMPOSTRAL_CHAT_MODEL`.
+The default room has two humans and four agents, using Large, Medium, Small, and
+Ministral respectively. Agents also use different personas, temperatures, and
+persona-specific human few-shot examples from `PERSONAS` in
+`app/agents/llm_agent.py`. Guided decoding enforces a strict JSON Schema with
+private `thinking` and one public `output` utterance of at most 100 characters,
+preferably 3 to 10 words. Outputs may be ultra-short, deflective, or strongly
+accusatory. Only `output` enters the transcript.
 
 ## Model performance tracking
 
-Each finished game appends one JSON record to `IMPOSTRAL_STATS_PATH`
-(default `data/results.jsonl`, gitignored) via `app/game/stats.py`, capturing per
-LLM seat: model, survival, elimination round, and vote/detection accuracy. The
-`GET /stats` endpoint returns per-model aggregates and `/stats.html` renders a
-comparison table + bar chart (win rate, survival rate, vote accuracy). Recording
-is best-effort and never interrupts a game.
+Each finished game appends a JSON record to `IMPOSTRAL_STATS_PATH` (default
+`data/results.jsonl`). `app/game/stats.py` records each model's win, survival,
+elimination round, and competitive vote accuracy. `/stats` exposes aggregates
+and `/stats.html` renders the model comparison dashboard.
 
 ## `mistralai` SDK version caveat
 
@@ -93,12 +96,12 @@ never receive role information; they only see the transcript.
 | `app/game/state_machine.py` | Phase engine, timing protection, exchange cap, and win conditions. |
 | `app/game/events.py` | WebSocket message schemas; active roles are never exposed. |
 | `app/game/questions.py` | Open-ended question bank. |
-| `app/game/stats.py` | Per-game result recording and per-model aggregation. |
-| `app/agents/llm_agent.py` | LLM player answers, questions, votes, personas, and mock fallback. |
+| `app/game/stats.py` | Per-game records and per-model performance aggregation. |
+| `app/agents/llm_agent.py` | Structured LLM answers, questions, personas, few-shots, and mock fallback. |
 | `app/audio/stt.py` / `tts.py` | Voxtral wrappers with graceful fallback. |
 | `app/audio/voices.py` | Cached preset voice pool with distinct speakers. |
 | `app/audio/store.py` | Ephemeral FIFO audio store served from `/audio/{id}`. |
-| `web/` | Vanilla JS client, push-to-talk input, audio playback, and phase UI. |
+| `web/` | Radial arena, model statistics dashboard, audio, and phase UI. |
 
 ## WebSocket protocol
 
@@ -108,19 +111,18 @@ never receive role information; they only see the transcript.
 - **Server -> client**: `room_state`, `phase_change{phase, deadline, prompt}`,
   `utterance{seat, text, audio_url, context}`, `request_input{mode, deadline,
   targets}`, `vote_result{tally, eliminated}`, `elimination{seat, role}`,
-  `game_over{winner, roles}`, and `system`.
+  `game_over{winner, winners, roles}`, and `system`.
 
 `deadline` is the number of remaining seconds; the client renders the countdown.
 
 ## Win conditions
 
-- LLMs win when every human is eliminated.
-- Humans win by surviving `max_rounds`, or when every LLM is eliminated.
+- Humans and AIs vote. Selecting a human wastes the round without eliminating them.
+- Once every AI is eliminated, the last AI eliminated wins.
+- At `max_rounds`, all undetected AIs tie.
 
 ## Possible improvements
 
-- ~~Use different models per seat for balance testing.~~ Done via
-  `IMPOSTRAL_MODEL_POOL` + `/stats.html`.
 - Replace batch STT with `voxtral-mini-realtime-latest`.
 - Add voice cloning through `ref_audio`, or more distinct speakers.
 - Add player reconnection, multiple rooms, and a dedicated spectator screen.

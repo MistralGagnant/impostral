@@ -23,16 +23,14 @@ class Settings(BaseSettings):
     # --- Mistral ---------------------------------------------------------
     # The API key follows the standard unprefixed MISTRAL_API_KEY convention.
     mistral_api_key: str = Field("", alias="MISTRAL_API_KEY")
-    chat_model: str = "mistral-large-latest"
-    # Comma-separated pool of chat models. When set, each LLM seat is assigned a
-    # model from this pool so several models compete in the same game. Kept as a
-    # plain string to avoid pydantic-settings' JSON parsing of list env vars.
-    model_pool: str = ""
+    chat_model_large: str = "mistral-large-latest"
+    chat_model_medium: str = "mistral-medium-latest"
+    chat_model_small: str = "mistral-small-latest"
+    chat_model_ministral: str = "ministral-8b-latest"
     stt_model: str = "voxtral-mini-latest"
     tts_model: str = "voxtral-mini-tts-latest"
 
     # --- Model performance tracking -------------------------------------
-    # JSONL file appended with one record per finished game.
     stats_path: str = "data/results.jsonl"
 
     # --- Game composition ------------------------------------------------
@@ -57,15 +55,19 @@ class Settings(BaseSettings):
     voice_lang_prefix: str = "en"
 
     @property
-    def model_pool_list(self) -> list[str]:
-        """Return the configured model pool, falling back to the single chat model."""
-        pool = [m.strip() for m in self.model_pool.split(",") if m.strip()]
-        return pool or [self.chat_model]
-
-    @property
     def mock_mode(self) -> bool:
         """Return True when no API key is set and the game should use mock mode."""
         return not self.mistral_api_key.strip()
+
+    @property
+    def agent_models(self) -> list[str]:
+        """Return the four model tiers assigned to agents in seat order."""
+        return [
+            self.chat_model_large,
+            self.chat_model_medium,
+            self.chat_model_small,
+            self.chat_model_ministral,
+        ]
 
 
 @lru_cache

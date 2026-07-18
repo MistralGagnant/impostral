@@ -1,4 +1,4 @@
-"""Per-game result recording and per-model aggregation.
+"""Per-game competitive AI result recording and per-model aggregation.
 
 Each finished game appends one JSON line to `settings.stats_path`. Aggregation
 groups those records by the model assigned to each LLM seat, so the `/stats` page
@@ -21,13 +21,15 @@ def _path() -> Path:
     return Path(get_settings().stats_path)
 
 
-def record_game(room, winner: str) -> None:
-    """Append one JSON record describing this game's LLM seats and outcome."""
+def record_game(room, winners: list[str]) -> None:
+    """Append one record with the winning AI seat or surviving tied seats."""
     try:
         rounds = room.round_no
         llms = [
             {
                 "model": seat.model,
+                "seat": seat.id,
+                "won": seat.id in winners,
                 "survived": seat.alive,
                 "eliminated_round": seat.eliminated_round,
                 "votes_total": seat.votes_total,
@@ -39,7 +41,7 @@ def record_game(room, winner: str) -> None:
         record = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "room": room.id,
-            "winner": winner,
+            "winners": winners,
             "rounds": rounds,
             "llms": llms,
         }
@@ -82,7 +84,7 @@ def aggregate() -> dict:
             model,
             {
                 "games": 0,
-                "team_wins": 0,
+                "wins": 0,
                 "survivals": 0,
                 "votes_total": 0,
                 "votes_correct": 0,
@@ -91,14 +93,13 @@ def aggregate() -> dict:
         )
 
     for rec in records:
-        winner = rec.get("winner")
         rounds = rec.get("rounds", 0) or 0
         for seat in rec.get("llms", []):
             model = seat.get("model") or "(unknown)"
             b = bucket(model)
             b["games"] += 1
-            if winner == "llms":
-                b["team_wins"] += 1
+            if seat.get("won"):
+                b["wins"] += 1
             if seat.get("survived"):
                 b["survivals"] += 1
             b["votes_total"] += seat.get("votes_total", 0) or 0
@@ -114,7 +115,7 @@ def aggregate() -> dict:
             {
                 "model": model,
                 "games": b["games"],
-                "team_win_rate": b["team_wins"] / games,
+                "team_win_rate": b["wins"] / games,
                 "survival_rate": b["survivals"] / games,
                 "vote_accuracy": b["votes_correct"] / votes,
                 "votes_total": b["votes_total"],

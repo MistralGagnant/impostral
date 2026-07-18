@@ -382,8 +382,12 @@
     renderSeats();
     const banner = document.createElement("div");
     banner.className = "winner";
-    banner.textContent = msg.winner === "llms"
-      ? "AI wins." : "Humans win!";
+    const winners = msg.winners || [];
+    banner.textContent = winners.length === 1
+      ? `${winners[0]} wins the game!`
+      : winners.length > 1
+        ? `${winners.join(", ")} survive and tie.`
+        : "Game over.";
     phasePrompt.textContent = "";
     document.querySelector(".winner")?.remove();
     document.querySelector(".arena-shell").appendChild(banner);

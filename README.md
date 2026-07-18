@@ -1,10 +1,11 @@
 # Impostral
 
-A web-based social deduction game **humans vs LLM**, inspired by a Jubilee video.
+A web-based social bluffing game **humans vs LLM**, inspired by a Jubilee video.
 
 Humans and LLM agents (Mistral) share a room. In each round, a **question** is asked to everyone,
-followed by a **deliberation** where players discuss, and then a **vote** to eliminate someone.
-The goal of the AIs: uncover and eliminate humans. The goal of the humans: pass as AIs.
+followed by a **deliberation** where players discuss, and then a shared **vote** to identify an AI.
+Each AI competes independently and tries to pass as human. The winning AI is the last one eliminated
+by the humans; surviving AIs tie if the round limit is reached.
 
 **Core mechanic — voice anonymization**: any speech (human or LLM) is transcribed and resynthesized
 into **Voxtral synthetic voice fixed by seat**. It is impossible to distinguish a human from an AI by
@@ -25,15 +26,16 @@ cp .env.example .env   # then fill in MISTRAL_API_KEY
 ./venv/bin/uvicorn app.main:app --reload
 ```
 
-Open http://localhost:8000 in one tab per human player (default: 2 humans + 3 AIs). Click
+Open http://localhost:8000 in one tab per human player (default: 2 humans + 4 AIs). Click
 "ready" in each tab; the game starts when all humans are ready.
 
 **Without API key**: *mock* mode — scripted agents, no audio (text only), no microphone required. Ideal
 for testing the game loop.
 
-Models used: `mistral-large-latest` (agents), `voxtral-mini-latest` (STT),
-`voxtral-mini-tts-latest` (TTS). See `AGENT.md` for architecture, configuration, and
-specifics of the `mistralai` 2.x SDK.
+Agent models: `mistral-large-latest`, `mistral-medium-latest`,
+`mistral-small-latest`, and `ministral-8b-latest`. Audio uses
+`voxtral-mini-latest` (STT) and `voxtral-mini-tts-latest` (TTS). See `AGENT.md`
+for architecture, configuration, and specifics of the `mistralai` 2.x SDK.
 
 ## Assets
 

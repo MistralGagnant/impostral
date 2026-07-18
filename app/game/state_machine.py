@@ -1,11 +1,11 @@
 """Game flow engine: QUESTION -> DELIBERATION -> VOTE -> RESOLUTION.
 
 Key properties:
-- Anonymization: every utterance passes through `_speak` and the seat's TTS voice.
-- Timing protection: QUESTION answers are collected for the full window, then
-  revealed as a shuffled group at a fixed cadence (`reveal_gap_seconds`). An LLM
-  never appears to answer faster than a human.
-- Agents do not know who is human; they only receive the transcript.
+- Every utterance passes through the seat's anonymized TTS voice.
+- Answers are collected for the full window and revealed in random order at a
+  fixed cadence, hiding response-time tells.
+- Agents compete independently to pass as human.
+- Humans and agents vote; selecting a human wastes the round without eliminating them.
 """
 from __future__ import annotations
 
@@ -28,9 +28,10 @@ class GameEngine:
         self.room = room
         self.settings = get_settings()
         self.used_questions: set[str] = set()
+        self.eliminated_llms: list[str] = []
 
     # ------------------------------------------------------------------
-    # Main loop
+    # Boucle principale
     # ------------------------------------------------------------------
     async def run(self) -> None:
         try:
@@ -60,7 +61,7 @@ class GameEngine:
             await self._system("An internal error interrupted the game.")
 
     # ------------------------------------------------------------------
-    # QUESTION phase
+    # Phase QUESTION
     # ------------------------------------------------------------------
     async def _question_phase(self) -> None:
         self.room.phase = Phase.QUESTION
@@ -74,7 +75,7 @@ class GameEngine:
         await self._broadcast_state()
 
         alive = self.room.alive_seats()
-        # Collect concurrently; each task returns (seat_id, text).
+        # Collecte concurrente ; chaque tâche renvoie (seat_id, texte).
         tasks = [asyncio.ensure_future(self._collect_answer(s, question, dur)) for s in alive]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -84,7 +85,7 @@ class GameEngine:
                 sid, text = res
                 answers[sid] = text or "(silence)"
 
-        # Reveal as a shuffled group at a fixed cadence to hide response timing.
+        # Révélation groupée, ordre aléatoire, cadence fixe (anti-tell).
         order = list(answers.keys())
         random.shuffle(order)
         for sid in order:
@@ -98,7 +99,7 @@ class GameEngine:
         return seat.id, await self._payload_to_text(payload)
 
     # ------------------------------------------------------------------
-    # DELIBERATION phase
+    # Phase DÉLIBÉRATION
     # ------------------------------------------------------------------
     async def _deliberation_phase(self) -> None:
         self.room.phase = Phase.DELIBERATION
@@ -114,13 +115,13 @@ class GameEngine:
         random.shuffle(askers)
         idx = 0
 
-        # Cap exchanges even when fast agents answer immediately, so the
-        # transcript remains readable.
+        # Plafond d'échanges : borne la phase même quand les réponses arrivent
+        # instantanément (agents rapides), pour ne pas noyer le transcript.
         max_exchanges = max(2, len(self.room.alive_seats()) * 2)
         done = 0
 
-        # Continue targeted question-and-answer exchanges while time remains,
-        # at least two seats are active, and the cap has not been reached.
+        # On enchaîne des échanges (question dirigée → réponse) tant qu'il reste
+        # du temps, au moins deux sièges vivants, et sous le plafond.
         while (loop.time() < end_at and done < max_exchanges
                and len(self.room.alive_seats()) >= 2):
             asker = askers[idx % len(askers)]
@@ -133,7 +134,8 @@ class GameEngine:
                 done += 1
 
     async def _one_exchange(self, asker, remaining: int) -> bool:
-        """Run one targeted exchange and return True when the asker participates."""
+        """Réalise un échange (question dirigée → réponse). Renvoie True si un
+        échange a bien eu lieu (l'asker n'a pas passé)."""
         others = self.room.alive_ids(exclude=asker.id)
         if not others:
             return False
@@ -148,7 +150,7 @@ class GameEngine:
                 asker, mode="deliberation", dur=min(remaining, 25), targets=others
             )
             if not payload or not payload.get("target"):
-                return False  # The player skipped.
+                return False  # le joueur a passé
             target_id = payload["target"]
             q_text = await self._payload_to_text(payload)
             if target_id not in others:
@@ -168,7 +170,7 @@ class GameEngine:
         return True
 
     # ------------------------------------------------------------------
-    # VOTE phase
+    # Phase VOTE
     # ------------------------------------------------------------------
     async def _vote_phase(self) -> None:
         self.room.phase = Phase.VOTE
@@ -176,8 +178,8 @@ class GameEngine:
         await self.room.broadcast(events.srv_phase_change(phase=Phase.VOTE.value, deadline=dur))
         await self._broadcast_state()
 
-        alive = self.room.alive_seats()
-        tasks = [asyncio.ensure_future(self._collect_vote(s, dur)) for s in alive]
+        voters = self.room.alive_seats()
+        tasks = [asyncio.ensure_future(self._collect_vote(s, dur)) for s in voters]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         tally: dict[str, int] = {}
@@ -185,13 +187,11 @@ class GameEngine:
             if isinstance(res, tuple) and res[1]:
                 voter_id, target_id = res
                 tally[target_id] = tally.get(target_id, 0) + 1
-                # Track LLM detection accuracy: a vote names the seat believed to
-                # be human, so it is "correct" when the target is actually human.
                 voter = self.room.seats.get(voter_id)
                 target = self.room.seats.get(target_id)
                 if voter and voter.kind == "llm":
                     voter.votes_total += 1
-                    if target and target.kind == "human":
+                    if target and target.kind == "llm":
                         voter.votes_correct += 1
 
         eliminated = self._resolve_tally(tally)
@@ -201,7 +201,8 @@ class GameEngine:
     async def _collect_vote(self, seat, dur: int) -> tuple[str, Optional[str]]:
         others = self.room.alive_ids(exclude=seat.id)
         if seat.kind == "llm":
-            return seat.id, await seat.agent.vote(self.room.render_transcript(), others)
+            target = await seat.agent.vote(self.room.render_transcript(), others)
+            return seat.id, target if target in others else None
         payload = await self._request_human(seat, mode="vote", dur=dur, targets=others)
         target = payload.get("target") if payload else None
         return seat.id, target if target in others else None
@@ -212,54 +213,70 @@ class GameEngine:
             return None
         top = max(tally.values())
         leaders = [sid for sid, n in tally.items() if n == top]
-        return random.choice(leaders)  # Break ties randomly.
+        return random.choice(leaders)  # égalité tranchée au hasard
 
     # ------------------------------------------------------------------
-    # RESOLUTION phase
+    # Phase RÉSOLUTION
     # ------------------------------------------------------------------
     async def _resolution_phase(self) -> None:
         self.room.phase = Phase.RESOLUTION
         eliminated = getattr(self, "_pending_eliminated", None)
         if eliminated and eliminated in self.room.seats:
             seat = self.room.seats[eliminated]
-            seat.alive = False
-            seat.eliminated_round = self.room.round_no
-            role = seat.kind if self.settings.reveal_role_on_elimination else None
-            await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
-            if role:
-                label = "a HUMAN" if role == "human" else "an AI"
-                await self._system(f"{eliminated} is out… they were {label}.")
+            if seat.kind == "llm":
+                seat.alive = False
+                seat.eliminated_round = self.room.round_no
+                self.eliminated_llms.append(seat.id)
+                role = seat.kind if self.settings.reveal_role_on_elimination else None
+                await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
+                if role:
+                    await self._system(f"{eliminated} is out… they were an AI.")
+                else:
+                    await self._system(f"{eliminated} is out.")
             else:
-                await self._system(f"{eliminated} is out.")
+                await self._system(
+                    f"The vote missed: {eliminated} is human and stays in the game."
+                )
         else:
             await self._system("No one is eliminated this round.")
         await self._broadcast_state()
         await asyncio.sleep(1.5)
 
     # ------------------------------------------------------------------
-    # Game over
+    # Fin de partie
     # ------------------------------------------------------------------
     def _check_end(self) -> bool:
-        return not self.room.humans_alive() or not self.room.llms_alive()
+        return not self.room.llms_alive()
 
     async def _game_over(self) -> None:
         self.room.phase = Phase.GAME_OVER
-        if not self.room.humans_alive():
-            winner = "llms"
+        survivors = [s.id for s in self.room.llms_alive()]
+        if survivors:
+            winners = survivors
+            result = (
+                f"{', '.join(winners)} remained undetected and tie for the win."
+                if len(winners) > 1
+                else f"{winners[0]} remained undetected and wins the game."
+            )
         else:
-            winner = "humans"  # Humans survived, or all LLMs were eliminated.
+            winners = self.eliminated_llms[-1:]  # dernière IA éliminée
+            result = (
+                f"{winners[0]} was the last AI eliminated and wins the game."
+                if winners
+                else "No winning AI could be determined."
+            )
         roles = {s.id: s.kind for s in self.room.seats.values()}
-        stats.record_game(self.room, winner)
-        await self.room.broadcast(events.srv_game_over(winner=winner, roles=roles))
-        msg = ("AI eliminated every human." if winner == "llms"
-               else "Humans survived — they win!")
-        await self._system("Game over. " + msg)
+        stats.record_game(self.room, winners)
+        await self.room.broadcast(
+            events.srv_game_over(winner="agents", winners=winners, roles=roles)
+        )
+        await self._system("Game over. " + result)
 
     # ------------------------------------------------------------------
-    # Utilities
+    # Utilitaires
     # ------------------------------------------------------------------
     async def _speak(self, seat, text: str, context: str = "") -> None:
-        """Anonymize and broadcast an utterance with the seat's synthetic voice."""
+        """Anonymise et diffuse une prise de parole (texte + audio voix du siège)."""
         self.room.add_utterance(seat.id, text, context)
         audio_url = await tts.synthesize(text, voice=seat.voice)
         await self.room.broadcast(
@@ -269,10 +286,10 @@ class GameEngine:
 
     async def _request_human(self, seat, *, mode: str, dur: int,
                              targets: Optional[list[str]] = None) -> Optional[dict]:
-        """Request human input and wait for a response or timeout."""
+        """Demande une saisie au siège humain et attend sa réponse (ou timeout)."""
         if not seat.connected:
             return None
-        # Create the Future before sending, so an immediate response cannot be lost.
+        # Future créée AVANT l'envoi pour éviter de perdre une réponse très rapide.
         fut = self.room.expect_input(seat.id)
         await self.room.send_seat(
             seat.id, events.srv_request_input(mode=mode, deadline=dur, targets=targets)
