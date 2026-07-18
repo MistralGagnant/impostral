@@ -22,10 +22,17 @@ class StubAgent:
 
 
 class StubSeat:
-    def __init__(self, seat_id: str, kind: str, agent: StubAgent | None = None) -> None:
+    def __init__(
+        self,
+        seat_id: str,
+        kind: str,
+        agent: StubAgent | None = None,
+        model: str | None = None,
+    ) -> None:
         self.id = seat_id
         self.kind = kind
         self.agent = agent
+        self.model = model
         self.alive = True
         self.connected = kind == "human"
         self.votes_total = 0
@@ -77,8 +84,8 @@ class VotingTest(unittest.IsolatedAsyncioTestCase):
         human.alive = False
         room = StubRoom([
             human,
-            StubSeat("Player B", "llm", StubAgent()),
-            StubSeat("Player C", "llm", StubAgent()),
+            StubSeat("Player B", "llm", StubAgent(), "mistral-large-latest"),
+            StubSeat("Player C", "llm", StubAgent(), "mistral-small-latest"),
         ])
 
         self.assertTrue(make_engine(room)._check_end())
@@ -88,8 +95,8 @@ class VotingTest(unittest.IsolatedAsyncioTestCase):
         human.alive = False
         room = StubRoom([
             human,
-            StubSeat("Player B", "llm", StubAgent()),
-            StubSeat("Player C", "llm", StubAgent()),
+            StubSeat("Player B", "llm", StubAgent(), "mistral-large-latest"),
+            StubSeat("Player C", "llm", StubAgent(), "mistral-small-latest"),
         ])
         engine = make_engine(room)
 
@@ -98,6 +105,10 @@ class VotingTest(unittest.IsolatedAsyncioTestCase):
 
         game_over = next(msg for msg in room.messages if msg["type"] == "game_over")
         self.assertEqual(game_over["message"], "The AIs have won — no humans remain.")
+        self.assertEqual(game_over["models"], {
+            "Player B": "mistral-large-latest",
+            "Player C": "mistral-small-latest",
+        })
 
     async def test_every_seat_votes_and_a_tie_triggers_a_restricted_runoff(self) -> None:
         agent_b = StubAgent(["Player A", "Player A"])
@@ -178,6 +189,7 @@ class VotingTest(unittest.IsolatedAsyncioTestCase):
             "type": "elimination",
             "seat": "Player A",
             "role": "human",
+            "model": None,
         })
 
 

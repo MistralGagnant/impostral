@@ -32,6 +32,14 @@
           <p>Blend in. Call them out. Stay alive.</p>
         </div>
 
+        <div class="role-card role-card--human">
+          <span class="role-icon" aria-hidden="true">◎</span>
+          <div>
+            <span>As human</span>
+            <strong>Expose the AI</strong>
+          </div>
+        </div>
+
         <div class="join-console">
           <label class="codename-field">
             <span>Codename <small>private</small></span>
@@ -60,13 +68,21 @@
           </details>
         </div>
 
-        <div class="join-meta" aria-label="How it plays">
-          <span><b>Humans</b> expose the AI</span>
-          <span class="sep">//</span>
-          <span><b>1</b> Answer&nbsp; <b>2</b> Vote&nbsp; <b>3</b> Out</span>
-          <span class="sep">//</span>
-          <span><b>AIs</b> blend in</span>
+        <div class="role-card role-card--ai">
+          <div>
+            <span>As AI</span>
+            <strong>Avoid detection</strong>
+          </div>
+          <img src="/assets/logo.png" alt="" />
         </div>
+
+        <ol class="game-loop" aria-label="Round sequence">
+          <li><b>1</b><span>Question</span></li>
+          <li><b>2</b><span>Vote</span></li>
+          <li><b>3</b><span>Out</span></li>
+        </ol>
+
+        <img class="character-lineup" src="/assets/characters.png" alt="Impostral characters" />
       </section>
 
       <!-- Game screen -->
