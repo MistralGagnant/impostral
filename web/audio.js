@@ -55,6 +55,12 @@
   // --- Audio playback queue: TTS clips never overlap ---
   const queue = [];
   let playing = false;
+  let playbackRate = 1.1;
+
+  function setPlaybackRate(rate) {
+    const parsed = Number(rate);
+    if (Number.isFinite(parsed)) playbackRate = Math.min(2, Math.max(0.5, parsed));
+  }
 
   function enqueue(url, onComplete) {
     if (!url) {
@@ -70,6 +76,7 @@
     playing = true;
     const { url, onComplete } = queue.shift();
     const audio = new Audio(url);
+    audio.playbackRate = playbackRate;
     let completed = false;
     const finish = () => {
       if (completed) return;
@@ -82,5 +89,7 @@
     audio.play().catch(finish);
   }
 
-  window.ImpostralAudio = { startRecording, stopRecording, isRecording, enqueue };
+  window.ImpostralAudio = {
+    startRecording, stopRecording, isRecording, enqueue, setPlaybackRate,
+  };
 })();

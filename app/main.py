@@ -45,6 +45,7 @@ async def public_config() -> dict:
         "max_humans": s.max_humans,
         "max_rounds": s.max_rounds,
         "mock_mode": s.mock_mode,
+        "tts_playback_rate": s.tts_playback_rate,
     }
 
 

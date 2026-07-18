@@ -23,6 +23,12 @@ class WebUiTest(unittest.TestCase):
         self.assertIn("white-space: normal", answer_rule)
         self.assertNotIn("line-clamp", answer_rule)
 
+    def test_tts_playback_is_accelerated(self) -> None:
+        audio_js = (ROOT / "web" / "audio.js").read_text(encoding="utf-8")
+
+        self.assertIn("let playbackRate = 1.1", audio_js)
+        self.assertIn("audio.playbackRate = playbackRate", audio_js)
+
 
 if __name__ == "__main__":
     unittest.main()

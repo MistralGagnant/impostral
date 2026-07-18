@@ -54,7 +54,9 @@ class Settings(BaseSettings):
     question_seconds: int = 45
     vote_seconds: int = 30
     # Fixed reveal cadence used to hide response-time tells.
-    reveal_gap_seconds: float = 1.2
+    reveal_gap_seconds: float = 0.15
+    # Uniform client playback speed preserves voice anonymity across seats.
+    tts_playback_rate: float = 1.1
 
     # --- TTS voice pool used only as a mock fallback ---------------------
     # Outside mock mode, preset Voxtral voices are loaded dynamically.

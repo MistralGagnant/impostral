@@ -82,6 +82,7 @@
     .then((response) => response.ok ? response.json() : null)
     .then((config) => {
       if (config?.max_rounds) maxRounds = config.max_rounds;
+      if (config?.tts_playback_rate) A.setPlaybackRate(config.tts_playback_rate);
       $("round-total").textContent = maxRounds;
       if (config) {
         humansInput.min = config.min_humans ?? 1;

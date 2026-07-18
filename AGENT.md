@@ -45,7 +45,8 @@ creates a private room, so a wrong name is rejected. `IMPOSTRAL_NUM_HUMANS` is
 the public/default human count (bounded by `IMPOSTRAL_MIN_HUMANS` and
 `IMPOSTRAL_MAX_HUMANS`); the AI count comes from `IMPOSTRAL_NUM_LLMS`. Configure
 timings through `IMPOSTRAL_`-prefixed variables such as `IMPOSTRAL_MAX_ROUNDS`
-and `IMPOSTRAL_QUESTION_SECONDS`; see `app/config.py`. The first browser
+and `IMPOSTRAL_QUESTION_SECONDS`; TTS defaults to uniform 1.1x playback with a
+0.15-second post-clip gap. See `app/config.py`. The first browser
 interaction unlocks audio playback under autoplay policies.
 
 ## Default Mistral models (`app/config.py`)
