@@ -15,6 +15,10 @@ ear. The timing tell is neutralized (responses revealed grouped, in random order
 Stack: **Voxtral** (STT + TTS) + **Mistral chat** (agent reasoning), backend **FastAPI +
 WebSockets**, front **vanilla JS**.
 
+## How It Works
+
+![Impostral architecture — humans vs Mistral agents](assets/diagram.png)
+
 ## Getting Started
 
 ```bash
