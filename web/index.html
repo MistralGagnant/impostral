@@ -3,140 +3,99 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#060907" />
+  <meta name="theme-color" content="#0b0a08" />
   <title>Impostral — The social hunt game</title>
   <link rel="icon" type="image/png" href="/assets/logo.png" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <div class="app-shell">
-    <div class="scanlines" aria-hidden="true"></div>
-
     <header class="hud-header">
       <a class="brand" href="/" aria-label="Impostral — home">
         <img src="/assets/impostral.png" alt="Impostral" />
       </a>
-      <div class="system-status" aria-label="System status">
-        <a href="/stats.html" class="stats-link">Model stats</a>
-        <span>Stay sharp</span>
-        <i></i><i></i><i></i>
-      </div>
+      <nav class="hud-nav">
+        <a href="/stats.html">Model stats</a>
+      </nav>
     </header>
 
     <main>
       <!-- Join screen -->
       <section id="join-screen" class="join-screen">
         <div class="hero-radar" aria-hidden="true">
-          <span class="radar-ring radar-ring--outer"></span>
-          <span class="radar-ring radar-ring--inner"></span>
-          <span class="radar-axis radar-axis--x"></span>
-          <span class="radar-axis radar-axis--y"></span>
           <span class="radar-sweep"></span>
           <img class="radar-mascot" src="/assets/logo.png" alt="" />
         </div>
 
         <div class="hero-copy">
-          <p class="eyebrow">// Social detection protocol</p>
           <h1>Find. Vote. Hunt.</h1>
-          <p class="hero-kicker">The social hunt game.</p>
-          <p class="hero-summary">Blend in. Call them out. Stay alive.</p>
-
-          <div class="join-console">
-            <div class="mode-switch" role="tablist" aria-label="Lobby mode">
-              <button id="mode-create" type="button" role="tab" aria-selected="true">Create lobby</button>
-              <button id="mode-join" type="button" role="tab" aria-selected="false">Join lobby</button>
-            </div>
-            <label>
-              <span>Lobby name</span>
-              <input id="room-input" type="text" value="lobby" autocomplete="off" />
-            </label>
-            <label id="humans-field">
-              <span>Human players <small>including you</small></span>
-              <input id="humans-input" type="number" min="1" max="8" step="1" value="2" autocomplete="off" />
-            </label>
-            <label>
-              <span>Codename <small>private</small></span>
-              <input id="name-input" type="text" placeholder="anonymous" autocomplete="off" />
-            </label>
-            <button id="join-btn" type="button"><span>Create &amp; enter</span></button>
-            <p id="join-hint" class="hint" aria-live="polite"></p>
-          </div>
+          <p>Blend in. Call them out. Stay alive.</p>
         </div>
 
-        <div class="role-card role-card--human">
-          <span class="role-icon role-icon--human" aria-hidden="true">◎</span>
-          <div>
-            <span>As human</span>
-            <strong>Expose AI</strong>
+        <div class="join-console">
+          <div class="mode-switch" role="tablist" aria-label="Lobby mode">
+            <button id="mode-create" type="button" role="tab" aria-selected="true">Create lobby</button>
+            <button id="mode-join" type="button" role="tab" aria-selected="false">Join lobby</button>
           </div>
+          <label>
+            <span>Lobby name</span>
+            <input id="room-input" type="text" value="lobby" autocomplete="off" />
+          </label>
+          <label id="humans-field">
+            <span>Human players <small>including you</small></span>
+            <input id="humans-input" type="number" min="1" max="8" step="1" value="2" autocomplete="off" />
+          </label>
+          <label>
+            <span>Codename <small>private</small></span>
+            <input id="name-input" type="text" placeholder="anonymous" autocomplete="off" />
+          </label>
+          <button id="join-btn" type="button"><span>Create &amp; enter</span></button>
+          <p id="join-hint" class="hint" aria-live="polite"></p>
         </div>
 
-        <div class="role-card role-card--ai">
-          <div>
-            <span>As AI</span>
-            <strong>Avoid detection</strong>
-          </div>
-          <img src="/assets/logo.png" alt="" />
+        <div class="join-meta" aria-label="How it plays">
+          <span><b>Humans</b> expose the AI</span>
+          <span class="sep">//</span>
+          <span><b>1</b> Answer&nbsp; <b>2</b> Vote&nbsp; <b>3</b> Out</span>
+          <span class="sep">//</span>
+          <span><b>AIs</b> blend in</span>
         </div>
-
-        <ol class="game-loop" aria-label="Round sequence">
-          <li><b>1</b><span>Question</span></li>
-          <li><b>2</b><span>Vote</span></li>
-          <li><b>3</b><span>Out</span></li>
-        </ol>
-
-        <img class="character-lineup" src="/assets/characters.png" alt="Impostral characters" />
       </section>
 
       <!-- Game screen -->
       <section id="game-screen" class="game-screen hidden">
         <div class="game-layout">
           <aside class="mission-panel tactical-panel" aria-label="Round status">
-            <div class="metric metric--round">
+            <div class="metric-row">
               <span>Round</span>
-              <strong><b id="round-current">0</b><small>/ <i id="round-total">5</i></small></strong>
+              <strong><b id="round-current">0</b><small> / <i id="round-total">5</i></small></strong>
             </div>
-            <div class="metric metric--players">
+            <div class="metric-row">
               <span>Players</span>
-              <div class="players-glyph" aria-hidden="true"><i></i><i></i><i></i></div>
-              <strong><b id="players-alive">0</b><small>/ <i id="players-total">0</i></small></strong>
+              <strong><b id="players-alive">0</b><small> / <i id="players-total">0</i></small></strong>
             </div>
-            <div class="metric metric--time">
-              <span>Time left</span>
-              <div class="time-dial">
-                <div id="phase-timer">—</div>
-                <small>sec</small>
-              </div>
+            <div class="metric-row">
+              <span>Time</span>
+              <strong><span id="phase-timer">—</span><small> s</small></strong>
             </div>
-            <div class="phase-readout">
-              <span>Active phase</span>
-              <strong id="phase-name">Lobby</strong>
+            <div class="metric-row">
+              <span>Phase</span>
+              <span id="phase-name">Lobby</span>
             </div>
-            <div id="log" class="log" aria-live="polite"></div>
+            <p class="feed-label">Live feed</p>
+            <div id="transcript" aria-live="polite">
+              <p class="transcript-empty">Anonymous channel ready.</p>
+            </div>
           </aside>
 
           <section class="arena-shell" aria-label="Game arena">
-            <div class="arena-grid" aria-hidden="true">
-              <span class="orbit orbit--one"></span>
-              <span class="orbit orbit--two"></span>
-              <span class="orbit orbit--three"></span>
-              <span class="axis axis--x"></span>
-              <span class="axis axis--y"></span>
-            </div>
-
-            <div id="seats" aria-label="Players"></div>
-
-            <div class="question-frame">
-              <span class="question-label">Question</span>
-              <p id="phase-prompt" class="prompt">Waiting for protocol…</p>
-              <span class="question-phase">// <b id="question-status">Stand by</b></span>
-            </div>
-
-            <section class="arena-feed" aria-label="Discussion channel">
-              <div id="transcript" aria-live="polite">
-                <p class="transcript-empty">Anonymous channel ready.</p>
+            <div class="arena-viz">
+              <div id="seats" aria-label="Players"></div>
+              <div class="question-frame">
+                <span class="question-label">Question</span>
+                <p id="phase-prompt" class="prompt">Waiting for players…</p>
               </div>
-            </section>
+            </div>
 
             <!-- Contextual answer input -->
             <div id="input-panel" class="hidden">
@@ -152,7 +111,7 @@
           <aside id="vote-panel" class="vote-panel tactical-panel hidden" aria-label="Vote">
             <div class="vote-heading">
               <span>Vote</span>
-              <p>Select the player you think is human.</p>
+              <p>Vote out the player you think is an AI. Most voted is eliminated.</p>
             </div>
             <div id="vote-options" class="vote-options" role="radiogroup" aria-label="Players"></div>
             <button id="submit-vote" type="button" disabled>Submit vote</button>
@@ -160,11 +119,6 @@
         </div>
       </section>
     </main>
-
-    <footer class="hud-footer">
-      <span><i></i> System online</span>
-      <span>IMPOSTRAL // PROTOCOL 01</span>
-    </footer>
   </div>
 
   <script src="/static/audio.js"></script>
