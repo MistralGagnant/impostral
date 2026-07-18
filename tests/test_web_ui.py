@@ -9,6 +9,22 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class WebUiTest(unittest.TestCase):
+    def test_home_page_has_search_and_social_metadata(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('<link rel="canonical" href="https://impostral.com/"', html)
+        self.assertIn('property="og:image" content="https://impostral.com/assets/logo.png"', html)
+        self.assertIn('name="twitter:card" content="summary_large_image"', html)
+        self.assertIn('type="application/ld+json"', html)
+
+    def test_crawler_files_use_canonical_urls(self) -> None:
+        robots = (ROOT / "web" / "robots.txt").read_text(encoding="utf-8")
+        sitemap = (ROOT / "web" / "sitemap.xml").read_text(encoding="utf-8")
+
+        self.assertIn("Sitemap: https://impostral.com/sitemap.xml", robots)
+        self.assertIn("<loc>https://impostral.com/</loc>", sitemap)
+        self.assertIn("<loc>https://impostral.com/stats.html</loc>", sitemap)
+
     def test_codename_is_explicitly_optional(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /audio/
+Disallow: /config
+Disallow: /stats
+Allow: /stats.html
+
+Sitemap: https://impostral.com/sitemap.xml

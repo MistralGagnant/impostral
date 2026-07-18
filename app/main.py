@@ -35,6 +35,16 @@ async def index() -> FileResponse:
     return FileResponse(str(WEB_DIR / "index.html"))
 
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots() -> FileResponse:
+    return FileResponse(str(WEB_DIR / "robots.txt"), media_type="text/plain")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap() -> FileResponse:
+    return FileResponse(str(WEB_DIR / "sitemap.xml"), media_type="application/xml")
+
+
 @app.get("/config")
 async def public_config() -> dict:
     s = get_settings()
