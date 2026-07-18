@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY web ./web
+COPY assets ./assets
 
 RUN adduser --disabled-password --no-create-home --gecos "" appuser
 USER appuser
