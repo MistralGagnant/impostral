@@ -558,6 +558,22 @@ body[data-phase="game_over"] .question-frame { display: none; }
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
+.lobby-player-count {
+  display: block;
+  margin-top: 8px;
+  color: var(--orange);
+  font-size: clamp(2.4rem, 7vh, 4.8rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.lobby-player-caption {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
 
 /* Answer input bar */
 #input-panel {

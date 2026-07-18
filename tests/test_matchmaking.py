@@ -153,8 +153,9 @@ class MatchmakingTest(unittest.IsolatedAsyncioTestCase):
             player_id="player_9999",
             session_id="session_9999",
         )
+        creator_socket = object()
         accepted = await room.attach(
-            object(),
+            creator_socket,
             "Creator",
             player_id="player_0001",
             session_id="session_0001",
@@ -165,6 +166,18 @@ class MatchmakingTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(rejected)
         self.assertNotIn(rejected_socket, room._ws_all)
         self.assertIsNotNone(accepted)
+        self.assertEqual(room.host_seat_id, accepted.id)
+        self.assertTrue(room.is_host(accepted.id))
+
+        room.detach(creator_socket)
+        reconnected = await room.attach(
+            object(),
+            "Creator",
+            player_id="player_0001",
+            session_id="session_0001",
+        )
+        self.assertEqual(reconnected.id, accepted.id)
+        self.assertTrue(room.is_host(reconnected.id))
 
     async def test_private_join_reserves_a_distinct_seat(self) -> None:
         room, creator_token, _ = await self.manager.create_private_and_reserve(

@@ -66,6 +66,17 @@ class WebUiTest(unittest.TestCase):
         self.assertIn(".lobby-countdown {", css)
         self.assertIn("font-size: clamp(2.8rem, 8vh, 5.4rem)", css)
 
+    def test_private_lobby_has_live_count_and_host_start_control(self) -> None:
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "style.css").read_text(encoding="utf-8")
+
+        self.assertIn('msg.visibility === "private"', app_js)
+        self.assertIn('"Waiting for the host to start…"', app_js)
+        self.assertIn('caption.textContent = "human players connected"', app_js)
+        self.assertIn('type: "start_game"', app_js)
+        self.assertNotIn('type: "ready"', app_js)
+        self.assertIn(".lobby-player-count {", css)
+
     def test_every_game_entry_uses_turnstile(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

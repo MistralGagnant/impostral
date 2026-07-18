@@ -35,7 +35,8 @@ Open http://localhost:8000 and click **Play**. Quick play joins the oldest publi
 a free human seat, or creates one with the default composition (3 humans + 3 AIs). Public
 games start automatically when all human seats are connected, or after 15 seconds with the
 humans currently present. Named private lobbies remain available under **Private lobby
-options** and keep the explicit ready step for an immediate full-lobby start.
+options**. They show the number of connected humans live and start only when their creator
+uses the host-only **Start game** button; no automatic timer applies to private lobbies.
 
 Quick play uses anonymous browser and tab identifiers stored locally. There is no sign-up,
 account, email address, or public player profile. The current in-memory lobby manager is

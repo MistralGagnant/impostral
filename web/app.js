@@ -9,7 +9,7 @@
   let currentRound = 0;
   let maxRounds = 5;
   let humanWaitSeconds = 15;
-  let readySent = false;
+  let isLobbyHost = false;
   let gameFinished = false;
   let currentMatch = null;
   let reconnectAttempts = 0;
@@ -386,7 +386,7 @@
     reconnectTimer = null;
     saveCurrentMatch(null);
     you = null;
-    readySent = false;
+    isLobbyHost = false;
     gameScreen.classList.add("hidden");
     joinScreen.classList.remove("hidden");
     document.body.dataset.screen = "join";
@@ -426,6 +426,7 @@
   function onRoomState(msg) {
     seats = msg.seats;
     if (msg.you) you = msg.you;
+    if (typeof msg.is_host === "boolean") isLobbyHost = msg.is_host;
     if (typeof msg.round === "number" && msg.round !== currentRound) {
       currentRound = msg.round;
       latestUtterances.clear();
@@ -441,17 +442,21 @@
     renderMissionStatus();
     renderSeats();
     if (you && msg.phase === "lobby") {
+      if (msg.started) {
+        showGameStarting();
+        return;
+      }
+      if (msg.visibility === "private") {
+        showPrivateLobby(
+          msg.connected_humans ?? 0,
+          msg.expected_humans ?? 0,
+        );
+        return;
+      }
       const remaining = typeof msg.lobby_wait_remaining === "number"
         ? msg.lobby_wait_remaining
         : humanWaitSeconds;
-      if (msg.auto_ready) {
-        readySent = true;
-        showWaiting(remaining);
-      } else if (readySent) {
-        showWaiting(remaining);
-      } else {
-        showReady(remaining);
-      }
+      showWaiting(remaining);
     }
   }
 
@@ -461,17 +466,51 @@
     startLobbyCountdown(remaining);
   }
 
-  function showReady(remaining = humanWaitSeconds) {
-    inputPanel.classList.remove("hidden");
+  function showPrivateLobby(connectedHumans, expectedHumans) {
+    if (inputCountdown) {
+      clearInterval(inputCountdown);
+      inputCountdown = null;
+    }
     inputTimer.textContent = "";
     inputControls.innerHTML = "";
-    startLobbyCountdown(remaining);
-    const btn = mkBtn("I'm ready", () => {
-      readySent = true;
-      ws.send(JSON.stringify({ type: "ready" }));
+
+    const label = document.createElement("span");
+    label.className = "lobby-wait-copy";
+    label.textContent = isLobbyHost
+      ? "Start whenever your group is ready"
+      : "Waiting for the host to start…";
+    const count = document.createElement("strong");
+    count.className = "lobby-player-count";
+    count.textContent = `${connectedHumans} / ${expectedHumans}`;
+    const caption = document.createElement("small");
+    caption.className = "lobby-player-caption";
+    caption.textContent = "human players connected";
+    phasePrompt.replaceChildren(label, count, caption);
+
+    if (!isLobbyHost) {
       inputPanel.classList.add("hidden");
+      return;
+    }
+
+    inputPanel.classList.remove("hidden");
+    const playerLabel = connectedHumans === 1 ? "player" : "players";
+    const btn = mkBtn(`Start game with ${connectedHumans} ${playerLabel}`, () => {
+      btn.disabled = true;
+      btn.textContent = "Starting…";
+      ws.send(JSON.stringify({ type: "start_game" }));
     });
+    btn.disabled = connectedHumans < 1;
     inputControls.appendChild(btn);
+  }
+
+  function showGameStarting() {
+    if (inputCountdown) {
+      clearInterval(inputCountdown);
+      inputCountdown = null;
+    }
+    inputPanel.classList.add("hidden");
+    inputControls.innerHTML = "";
+    phasePrompt.textContent = "Starting game…";
   }
 
   function startLobbyCountdown(remaining) {

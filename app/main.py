@@ -249,15 +249,38 @@ def _normalize(msg) -> dict:
     return {}
 
 
+def _room_state(room, *, you: Optional[str] = None) -> dict:
+    """Build a lobby state without exposing which anonymous seats are human."""
+    return events.srv_room_state(
+        seats=[seat.public() for seat in room.seats.values()],
+        phase=room.phase.value,
+        round_no=room.round_no,
+        you=you,
+        auto_ready=room.visibility == "public",
+        lobby_wait_remaining=room.lobby_wait_remaining(),
+        visibility=room.visibility,
+        connected_humans=len(room.connected_humans()),
+        expected_humans=room.num_humans,
+        is_host=room.is_host(you) if you else None,
+        started=room.started,
+    )
+
+
+async def _broadcast_room_state(room) -> None:
+    """Send personalized host permissions to every connected human."""
+    for seat in list(room.connected_humans()):
+        await room.send_seat(seat.id, _room_state(room, you=seat.id))
+
+
 async def _launch_game(room, *, allow_partial: bool = False) -> None:
-    if room.started:
+    if room.started or room.status != "waiting":
         return
-    if allow_partial:
-        room.keep_connected_humans()
-        if not room.connected_humans():
-            return
-    elif not room.all_humans_ready():
+    connected_humans = room.connected_humans()
+    if not connected_humans:
         return
+    if not allow_partial and len(connected_humans) < room.num_humans:
+        return
+    room.keep_connected_humans()
 
     room.started = True
     room.status = "running"
@@ -271,14 +294,7 @@ async def _launch_game(room, *, allow_partial: bool = False) -> None:
             f"{'s' if room.num_humans != 1 else ''}."
         )
     ))
-    await room.broadcast(events.srv_room_state(
-        seats=[s.public() for s in room.seats.values()],
-        phase=room.phase.value,
-        round_no=room.round_no,
-        you=None,
-        auto_ready=room.visibility == "public",
-        lobby_wait_remaining=0,
-    ))
+    await _broadcast_room_state(room)
     engine = GameEngine(room)
     room.engine_task = asyncio.create_task(engine.run())
     room.engine_task.add_done_callback(
@@ -296,9 +312,9 @@ async def _start_after_wait(room, delay: float) -> None:
 
 
 async def _maybe_start(room) -> None:
-    if room.started:
+    if room.started or room.visibility != "public":
         return
-    if room.all_humans_ready():
+    if len(room.connected_humans()) >= room.num_humans:
         await _launch_game(room)
         return
     if not room.connected_humans():
@@ -319,6 +335,14 @@ async def _maybe_start(room) -> None:
         )
     elif room.start_deadline <= now:
         await _launch_game(room, allow_partial=True)
+
+
+async def _start_private_game(room, seat_id: str) -> bool:
+    """Start a private lobby only when its connected creator requests it."""
+    if room.started or not room.is_host(seat_id):
+        return False
+    await _launch_game(room, allow_partial=True)
+    return room.started
 
 
 def _same_origin_websocket(ws: WebSocket) -> bool:
@@ -372,38 +396,22 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                         code="reservation_expired",
                     ))
                     break
-                seats = [s.public() for s in room.seats.values()]
-                await ws.send_json(
-                    events.srv_room_state(
-                        seats=seats, phase=room.phase.value,
-                        round_no=room.round_no, you=seat_id,
-                        auto_ready=room.visibility == "public",
-                        lobby_wait_remaining=room.lobby_wait_remaining(),
-                    )
-                )
-                if room.visibility == "public":
-                    room.ready_seats.add(seat_id)
                 await room.broadcast(events.srv_system(
                     text=f"A player joined ({seat_id})."))
                 await room.resend_pending(seat_id)
                 await _maybe_start(room)
-                await room.broadcast(events.srv_room_state(
-                    seats=[s.public() for s in room.seats.values()],
-                    phase=room.phase.value,
-                    round_no=room.round_no,
-                    you=None,
-                    auto_ready=room.visibility == "public",
-                    lobby_wait_remaining=room.lobby_wait_remaining(),
-                ))
+                await _broadcast_room_state(room)
                 continue
 
             if seat_id is None:
                 continue  # Spectators cannot submit game actions.
 
-            if msg.type == "ready":
-                room.ready_seats.add(seat_id)
-                await room.broadcast(events.srv_system(text=f"{seat_id} is ready."))
-                await _maybe_start(room)
+            if msg.type == "start_game":
+                if not await _start_private_game(room, seat_id):
+                    await ws.send_json(events.srv_system(
+                        text="Only the private lobby host can start the game.",
+                        code="host_only",
+                    ))
                 continue
 
             if msg.type == "playback_complete":
@@ -424,14 +432,7 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
             if was_attached:
                 try:
                     await room.broadcast(events.srv_system(text="A player disconnected."))
-                    await room.broadcast(events.srv_room_state(
-                        seats=[s.public() for s in room.seats.values()],
-                        phase=room.phase.value,
-                        round_no=room.round_no,
-                        you=None,
-                        auto_ready=room.visibility == "public",
-                        lobby_wait_remaining=room.lobby_wait_remaining(),
-                    ))
+                    await _broadcast_room_state(room)
                 except Exception:  # noqa: BLE001
                     pass
             await rooms.cleanup()

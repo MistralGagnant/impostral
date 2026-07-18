@@ -45,8 +45,8 @@ class SubmitVoteMsg(BaseModel):
     target: str
 
 
-class ReadyMsg(BaseModel):
-    type: Literal["ready"]
+class StartGameMsg(BaseModel):
+    type: Literal["start_game"]
 
 
 class PlaybackCompleteMsg(BaseModel):
@@ -55,14 +55,14 @@ class PlaybackCompleteMsg(BaseModel):
 
 
 ClientMessage = (
-    JoinMsg | AudioBlobMsg | SubmitVoteMsg | ReadyMsg | PlaybackCompleteMsg
+    JoinMsg | AudioBlobMsg | SubmitVoteMsg | StartGameMsg | PlaybackCompleteMsg
 )
 
 _PARSERS = {
     "join": JoinMsg,
     "audio_blob": AudioBlobMsg,
     "submit_vote": SubmitVoteMsg,
-    "ready": ReadyMsg,
+    "start_game": StartGameMsg,
     "playback_complete": PlaybackCompleteMsg,
 }
 
@@ -84,6 +84,9 @@ def parse_client_message(raw: dict[str, Any]) -> Optional[BaseModel]:
 def srv_room_state(
     *, seats: list[dict], phase: str, round_no: int, you: Optional[str],
     auto_ready: bool = False, lobby_wait_remaining: Optional[int] = None,
+    visibility: str = "public", connected_humans: Optional[int] = None,
+    expected_humans: Optional[int] = None, is_host: Optional[bool] = None,
+    started: bool = False,
 ) -> dict:
     return {
         "type": "room_state",
@@ -93,6 +96,11 @@ def srv_room_state(
         "you": you,
         "auto_ready": auto_ready,
         "lobby_wait_remaining": lobby_wait_remaining,
+        "visibility": visibility,
+        "connected_humans": connected_humans,
+        "expected_humans": expected_humans,
+        "is_host": is_host,
+        "started": started,
     }
 
 

@@ -83,7 +83,9 @@ class Room:
     engine_task: Optional[asyncio.Task] = None
     start_wait_task: Optional[asyncio.Task] = None
     start_deadline: float = 0.0
-    ready_seats: set = field(default_factory=set)
+    # Private lobbies are controlled by the human seat reserved at creation.
+    # This value is server-only and survives a normal WebSocket reconnect.
+    host_seat_id: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
@@ -290,17 +292,22 @@ class Room:
     def humans_alive(self) -> list[Seat]:
         return [s for s in self.alive_seats() if s.kind == "human"]
 
-    def all_humans_ready(self) -> bool:
-        humans = [s for s in self.seats.values() if s.kind == "human"]
-        return bool(humans) and all(
-            s.connected and s.id in self.ready_seats for s in humans
-        )
-
     def connected_humans(self) -> list[Seat]:
         return [
             seat for seat in self.seats.values()
             if seat.kind == "human" and seat.connected
         ]
+
+    def is_host(self, seat_id: str) -> bool:
+        """Return whether a connected seat may start this private lobby."""
+        seat = self.seats.get(seat_id)
+        return bool(
+            self.visibility == "private"
+            and seat_id == self.host_seat_id
+            and seat is not None
+            and seat.kind == "human"
+            and seat.connected
+        )
 
     def keep_connected_humans(self) -> None:
         """Drop unfilled human seats immediately before a partial start."""
@@ -310,7 +317,6 @@ class Room:
         }
         for seat_id in absent_ids:
             self.seats.pop(seat_id, None)
-            self.ready_seats.discard(seat_id)
         self.num_humans = len(self.connected_humans())
 
     def lobby_wait_remaining(self) -> Optional[int]:
@@ -332,7 +338,6 @@ class Room:
                 seat.disconnected_at + reconnect_grace <= now
             )
             if expired_reservation or expired_claim:
-                self.ready_seats.discard(seat.id)
                 seat.clear_occupant()
 
     def has_waiting_occupants(self, now: float) -> bool:
@@ -493,6 +498,7 @@ class RoomManager:
                 session_id,
                 settings.matchmaking_reservation_seconds,
             )
+            room.host_seat_id = seat.id
             return room, token, True
 
     async def reserve_private(

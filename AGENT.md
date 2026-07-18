@@ -50,8 +50,10 @@ anonymous spectators are not accepted.
 
 Named private lobbies remain available under **Private lobby options**. One
 player creates a lobby and chooses its human count; other players join using the
-same name. Private players retain the explicit “I'm ready” step. Joining never
-creates a private room, so a wrong name is rejected. `IMPOSTRAL_NUM_HUMANS` is
+same name. The lobby shows the number of connected humans live and only its
+creator can start the game; private lobbies never use the public 15-second
+timer. Joining never creates a private room, so a wrong name is rejected.
+`IMPOSTRAL_NUM_HUMANS` is
 the public/default human count (bounded by `IMPOSTRAL_MIN_HUMANS` and
 `IMPOSTRAL_MAX_HUMANS`); the AI count comes from `IMPOSTRAL_NUM_LLMS`. Configure
 timings through `IMPOSTRAL_`-prefixed variables such as `IMPOSTRAL_MAX_ROUNDS`
@@ -146,7 +148,7 @@ another reservation. Creation returns 409 if the name is taken and 400 if
 public Turnstile site key when enforcement is active.
 
 - **Client -> server**: `join{name, player_id, session_id, reservation_token}`,
-  `ready`, `audio_blob{audio_b64|text}`, `submit_vote{target}`, and
+  `start_game` (private host only), `audio_blob{audio_b64|text}`, `submit_vote{target}`, and
   `playback_complete{playback_id}`.
 - **Server -> client**: `room_state`, `phase_change{phase, deadline, prompt}`,
   `utterance{seat, text, audio_url, context, playback_id}`,
