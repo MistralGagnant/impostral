@@ -94,6 +94,10 @@ class WebUiTest(unittest.TestCase):
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
         self.assertIn('id="turnstile-container"', html)
+        self.assertIn('rel="preconnect" href="https://challenges.cloudflare.com"', html)
+        self.assertIn("TURNSTILE_TOKEN_MAX_AGE_MS = 4 * 60 * 1000", app_js)
+        self.assertIn("void primeTurnstileToken().catch(() => {})", app_js)
+        self.assertIn("consumeCachedTurnstileToken()", app_js)
         self.assertIn("requestTurnstileToken()", app_js)
         self.assertIn('action: "enter_game"', app_js)
         self.assertIn("turnstile_token: turnstileToken", app_js)

@@ -15,7 +15,11 @@
   let reconnectAttempts = 0;
   let reconnectTimer = null;
   let connectionSerial = 0;
+  const TURNSTILE_TOKEN_MAX_AGE_MS = 4 * 60 * 1000;
   let turnstileScriptPromise = null;
+  let turnstileTokenPromise = null;
+  let cachedTurnstileToken = "";
+  let cachedTurnstileTokenAt = 0;
   let turnstileWidgetId = null;
   const latestUtterances = new Map();
   // Latest ballot: seat id -> votes received, shown as badges on the arena.
@@ -136,12 +140,27 @@
     turnstileContainer.replaceChildren();
   }
 
-  async function requestTurnstileToken() {
-    const config = await configReady;
-    if (!config) throw new Error("security_check_unavailable");
-    if (!config.turnstile_enabled) return "";
-    if (!config.turnstile_site_key) throw new Error("security_check_unavailable");
+  function hasFreshTurnstileToken() {
+    return Boolean(cachedTurnstileToken) &&
+      Date.now() - cachedTurnstileTokenAt < TURNSTILE_TOKEN_MAX_AGE_MS;
+  }
 
+  function clearCachedTurnstileToken() {
+    cachedTurnstileToken = "";
+    cachedTurnstileTokenAt = 0;
+  }
+
+  function consumeCachedTurnstileToken() {
+    if (!hasFreshTurnstileToken()) {
+      clearCachedTurnstileToken();
+      return "";
+    }
+    const token = cachedTurnstileToken;
+    clearCachedTurnstileToken();
+    return token;
+  }
+
+  async function generateTurnstileToken(config) {
     const turnstile = await loadTurnstile();
     removeTurnstileWidget();
     return new Promise((resolve, reject) => {
@@ -172,6 +191,43 @@
       turnstile.execute(turnstileWidgetId);
     });
   }
+
+  function primeTurnstileToken() {
+    if (hasFreshTurnstileToken()) return Promise.resolve(cachedTurnstileToken);
+    if (turnstileTokenPromise) return turnstileTokenPromise;
+
+    clearCachedTurnstileToken();
+    turnstileTokenPromise = configReady
+      .then(async (config) => {
+        if (!config) throw new Error("security_check_unavailable");
+        if (!config.turnstile_enabled) return "";
+        if (!config.turnstile_site_key) throw new Error("security_check_unavailable");
+        const token = await generateTurnstileToken(config);
+        cachedTurnstileToken = token;
+        cachedTurnstileTokenAt = Date.now();
+        return token;
+      })
+      .finally(() => { turnstileTokenPromise = null; });
+    return turnstileTokenPromise;
+  }
+
+  async function requestTurnstileToken() {
+    const config = await configReady;
+    if (!config) throw new Error("security_check_unavailable");
+    if (!config.turnstile_enabled) return "";
+    if (!config.turnstile_site_key) throw new Error("security_check_unavailable");
+
+    let token = consumeCachedTurnstileToken();
+    if (token) return token;
+    await primeTurnstileToken();
+    token = consumeCachedTurnstileToken();
+    if (!token) throw new Error("security_check_failed");
+    return token;
+  }
+
+  // Start the challenge while the visitor is reading the landing page. A failure
+  // remains silent here: clicking an entry button retries it and shows the error.
+  void primeTurnstileToken().catch(() => {});
 
   function entryErrorMessage(code, fallback) {
     if (code === "security_check_failed") {
@@ -222,9 +278,14 @@
   async function play() {
     if (connectionActive()) return;
     gameFinished = false;
+    const securityCheckReady = hasFreshTurnstileToken();
     playBtn.disabled = true;
-    playBtn.querySelector("span").textContent = "Checking…";
-    joinHint.textContent = "Running a quick security check…";
+    playBtn.querySelector("span").textContent = securityCheckReady
+      ? "Finding a game…"
+      : "Checking…";
+    joinHint.textContent = securityCheckReady
+      ? "Looking for the first available game…"
+      : "Finishing a quick security check…";
     try {
       const turnstileToken = await requestTurnstileToken();
       playBtn.querySelector("span").textContent = "Finding a game…";
@@ -256,6 +317,7 @@
         error.message,
         "Could not find a game. Try again.",
       );
+      void primeTurnstileToken().catch(() => {});
     }
   }
 
@@ -264,12 +326,17 @@
     const room = ($("room-input").value || "lobby").trim();
     if (!room) { joinHint.textContent = "Enter a lobby name."; return; }
 
+    const creating = mode === "create";
+    const securityCheckReady = hasFreshTurnstileToken();
     joinBtn.disabled = true;
-    joinBtn.querySelector("span").textContent = "Checking…";
-    joinHint.textContent = "Running a quick security check…";
+    joinBtn.querySelector("span").textContent = securityCheckReady
+      ? (creating ? "Creating…" : "Joining…")
+      : "Checking…";
+    joinHint.textContent = securityCheckReady
+      ? (creating ? `Creating lobby “${room}”…` : `Joining lobby “${room}”…`)
+      : "Finishing a quick security check…";
     try {
       const turnstileToken = await requestTurnstileToken();
-      const creating = mode === "create";
       joinHint.textContent = creating
         ? `Creating lobby “${room}”…`
         : `Joining lobby “${room}”…`;
@@ -320,6 +387,7 @@
           "Could not reach the lobby. Try again.",
         );
       }
+      void primeTurnstileToken().catch(() => {});
     }
   }
 
@@ -398,6 +466,7 @@
     playBtn.disabled = false;
     playBtn.querySelector("span").textContent = "Play";
     joinHint.textContent = message;
+    void primeTurnstileToken().catch(() => {});
   }
 
   // ------------------------------------------------------------------

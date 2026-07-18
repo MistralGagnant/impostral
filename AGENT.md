@@ -40,13 +40,15 @@ browser ID and a tab-specific session ID are stored locally for reconnection.
 There is no sign-up or public user profile.
 
 Every new game admission is protected by Cloudflare Turnstile when
-`TURNSTILE_SECRET_KEY` is configured. The browser obtains a single-use token for
-the `enter_game` action, the backend validates its result, hostname, and action,
-then issues a short-lived seat reservation. The public site key is configured as
-`turnstile_site_key` in `app/config.py`. Without the secret, enforcement is
-disabled for local development, while Cloud Run fails closed. WebSockets
-additionally require a same-origin handshake and a valid reservation ticket;
-anonymous spectators are not accepted.
+`TURNSTILE_SECRET_KEY` is configured. The browser prepares a single-use token for
+the `enter_game` action in the background, caches it for less than Turnstile's
+five-minute validity window, and consumes it only on admission. The backend
+validates its result, hostname, and action, then issues a short-lived seat
+reservation. The public site key is configured as `turnstile_site_key` in
+`app/config.py`. Without the secret, enforcement is disabled for local
+development, while Cloud Run fails closed. WebSockets additionally require a
+same-origin handshake and a valid reservation ticket; anonymous spectators are
+not accepted.
 
 Named private lobbies remain available under **Private lobby options**. One
 player creates a lobby and chooses its human count; other players join using the

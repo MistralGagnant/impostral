@@ -45,10 +45,11 @@ moved to shared infrastructure.
 
 Production game admission is protected by Cloudflare Turnstile. Set the
 unprefixed `TURNSTILE_SECRET_KEY` environment variable to enable enforcement;
-the public site key is configured in `app/config.py`. Turnstile runs only when a
-browser enters a game, and the backend exchanges a successful verification for
-a short-lived room reservation ticket. Local development remains unchallenged
-when the secret is absent; Cloud Run fails closed if the secret is missing.
+the public site key is configured in `app/config.py`. The browser prepares a
+single-use token in the background on the landing page and consumes it only when
+the player enters a game. The backend then exchanges a successful verification
+for a short-lived room reservation ticket. Local development remains
+unchallenged when the secret is absent; Cloud Run fails closed if it is missing.
 
 **Without API key**: *mock* mode — scripted agents, no audio (text only), no microphone required. Ideal
 for testing the game loop.
