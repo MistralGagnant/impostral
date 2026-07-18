@@ -14,6 +14,13 @@ groupées, en ordre aléatoire).
 Pile : **Voxtral** (STT + TTS) + **chat Mistral** (raisonnement des agents), backend **FastAPI +
 WebSockets**, front **JS vanilla**.
 
+## Assets
+
+Le dossier `assets` contient les ressources graphiques du jeu :
+- `characters.png` : illustrations des personnages
+- `impostral.png` : logo du jeu
+- `logo.png` : icône du jeu
+
 ## Démarrage
 
 ```bash
@@ -35,3 +42,7 @@ pour tester la boucle de jeu.
 Modèles utilisés : `mistral-large-latest` (agents), `voxtral-mini-latest` (STT),
 `voxtral-mini-tts-latest` (TTS). Voir `AGENT.md` pour l'architecture, la configuration et les
 particularités du SDK `mistralai` 2.x.
+
+## Contributeurs
+
+- MistralVibe
