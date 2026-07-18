@@ -33,7 +33,7 @@ class Seat:
     connected: bool = False  # Human-seat connection state.
     model: Optional[str] = None
     votes_total: int = 0
-    votes_correct: int = 0  # Votes targeting a competing AI.
+    votes_correct: int = 0  # Votes correctly targeting an AI.
     eliminated_round: Optional[int] = None
     # Anonymous browser identity. These values are server-private and never
     # included by `public`.

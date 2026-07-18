@@ -119,16 +119,25 @@ def aggregate() -> dict:
         elim = seat.get("eliminated_round")
         b["rounds_survived_sum"] += elim if elim is not None else rounds
 
+    legacy_games_without_humans = 0
+    if records:
+        # Keep humans visible even when every existing record predates human
+        # tracking. The UI can then explain the missing history explicitly.
+        bucket("Humans")
+
     for rec in records:
         rounds = rec.get("rounds", 0) or 0
         for seat in rec.get("llms", []):
             accumulate(seat, seat.get("model") or "(unknown)", rounds)
         # All humans across every game collapse into one "Humans" bucket.
-        for seat in rec.get("humans", []):
+        human_seats = rec.get("humans") or []
+        if not human_seats:
+            legacy_games_without_humans += 1
+        for seat in human_seats:
             accumulate(seat, "Humans", rounds)
 
     models = []
-    for model, b in sorted(acc.items()):
+    for model, b in sorted(acc.items(), key=lambda item: (item[0] != "Humans", item[0])):
         games = b["games"] or 1  # Guard against division by zero.
         votes = b["votes_total"] or 1
         models.append(
@@ -140,7 +149,15 @@ def aggregate() -> dict:
                 "vote_accuracy": b["votes_correct"] / votes,
                 "votes_total": b["votes_total"],
                 "avg_rounds_survived": b["rounds_survived_sum"] / games,
+                "data_available": bool(b["games"]),
+                "legacy_games_without_data": (
+                    legacy_games_without_humans if model == "Humans" else 0
+                ),
             }
         )
 
-    return {"total_games": len(records), "models": models}
+    return {
+        "total_games": len(records),
+        "legacy_games_without_humans": legacy_games_without_humans,
+        "models": models,
+    }

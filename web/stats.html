@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0b0a08" />
-  <title>Impostral — Model stats</title>
+  <title>Impostral — Player stats</title>
   <link rel="icon" type="image/png" href="/assets/logo.png" />
   <link rel="stylesheet" href="/static/style.css" />
   <style>
@@ -27,7 +27,7 @@
     <main class="stats-main">
       <div class="stats-wrap">
         <div class="stats-head">
-          <h1>Model stats</h1>
+          <h1>Player stats</h1>
           <button class="btn" id="refresh" type="button" style="min-height:36px; padding:0 16px; font-size:0.62rem;">Refresh</button>
         </div>
         <div id="content"></div>
@@ -99,9 +99,18 @@
         name.className = "model-name";
         name.textContent = row.model + " ";
         const games = document.createElement("small");
-        games.textContent = "· " + row.games + " game" + (row.games === 1 ? "" : "s");
+        games.textContent = "· " + row.games + " recorded appearance" +
+          (row.games === 1 ? "" : "s");
         name.appendChild(games);
         g.appendChild(name);
+        if (!row.data_available) {
+          const unavailable = document.createElement("p");
+          unavailable.className = "stats-unavailable";
+          unavailable.textContent = "No compatible human data in historical games.";
+          g.appendChild(unavailable);
+          chart.appendChild(g);
+          continue;
+        }
         for (const m of METRICS) {
           const br = document.createElement("div");
           br.className = "bar-row";
@@ -123,16 +132,17 @@
       const t = document.createElement("table");
       t.innerHTML =
         "<thead><tr>" +
-        "<th>Model</th><th>Games</th><th>Win rate</th><th>Survival</th>" +
+        "<th>Player</th><th>Appearances</th><th>Win rate</th><th>Survival</th>" +
         "<th>Vote acc.</th><th>Votes</th><th>Avg rounds</th>" +
         "</tr></thead>";
       const tb = document.createElement("tbody");
       for (const r of models) {
         const tr = document.createElement("tr");
-        for (const cell of [
-          r.model, r.games, pct(r.team_win_rate), pct(r.survival_rate),
-          pct(r.vote_accuracy), r.votes_total, r.avg_rounds_survived.toFixed(1),
-        ]) {
+        const metrics = r.data_available
+          ? [pct(r.team_win_rate), pct(r.survival_rate), pct(r.vote_accuracy),
+            r.votes_total, r.avg_rounds_survived.toFixed(1)]
+          : ["—", "—", "—", "—", "—"];
+        for (const cell of [r.model, r.games, ...metrics]) {
           const td = document.createElement("td");
           td.textContent = String(cell);
           tr.appendChild(td);
@@ -175,9 +185,11 @@
       c2.appendChild(renderTable(data.models));
       const meta = document.createElement("p");
       meta.className = "meta";
+      const legacy = data.legacy_games_without_humans || 0;
       meta.textContent = data.total_games + " game" + (data.total_games === 1 ? "" : "s") +
-        " recorded. Win rate = LLM team won · Survival = seat alive at game end · " +
-        "Vote acc. = share of votes that named an actual human.";
+        " recorded. Win rate = winning appearances · Survival = seat alive at game end · " +
+        "Vote acc. = share of votes that correctly targeted an AI." +
+        (legacy ? ` Human metrics are unavailable for ${legacy} older game${legacy === 1 ? "" : "s"}.` : "");
       c2.appendChild(meta);
       content.appendChild(c2);
     }

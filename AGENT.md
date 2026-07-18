@@ -29,7 +29,8 @@ exposes `mock_mode`.
 # Open http://localhost:8000 in one tab per human player.
 ```
 
-The default **Play** action uses anonymous quick matchmaking. `POST /matchmaking`
+The default **Play** action uses anonymous quick matchmaking; the private
+codename field may be left blank. `POST /matchmaking`
 atomically reserves a human seat in the oldest waiting public lobby, or creates a
 public lobby with the default composition. The browser opens the room WebSocket
 with that short-lived reservation ticket; public players are automatically ready
@@ -73,7 +74,8 @@ Each finished game appends a JSON record to `IMPOSTRAL_STATS_PATH` (default
 elimination round, and competitive vote accuracy. Humans are recorded too, but
 grouped anonymously into a single `Humans` bucket (never per pseudonym), so the
 dashboard compares humans against each AI model. `/stats` exposes aggregates and
-`/stats.html` renders the model comparison dashboard.
+`/stats.html` renders the player comparison dashboard. Records created before
+human tracking remain readable and are reported as unavailable human history.
 
 ## `mistralai` SDK version caveat
 

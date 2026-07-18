@@ -159,7 +159,7 @@ class GameEngine:
             tally[target_id] = tally.get(target_id, 0) + 1
             voter = self.room.seats.get(voter_id)
             target = self.room.seats.get(target_id)
-            if voter and voter.kind == "llm":
+            if voter:
                 voter.votes_total += 1
                 if target and target.kind == "llm":
                     voter.votes_correct += 1

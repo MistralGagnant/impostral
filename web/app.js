@@ -359,8 +359,8 @@
       div.className = "seat" + (s.id === you ? " you" : "") + (s.alive ? "" : " dead");
       div.dataset.seat = s.id;
       const angle = (-90 + (360 / Math.max(seats.length, 1)) * index) * (Math.PI / 180);
-      div.style.setProperty("--seat-x", `${50 + Math.cos(angle) * 41}%`);
-      div.style.setProperty("--seat-y", `${50 + Math.sin(angle) * 39}%`);
+      div.style.setProperty("--seat-x", `${50 + Math.cos(angle) * 38}%`);
+      div.style.setProperty("--seat-y", `${50 + Math.sin(angle) * 32}%`);
 
       const avatarWrap = document.createElement("span");
       avatarWrap.className = "seat-avatar-wrap";

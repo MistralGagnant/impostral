@@ -115,9 +115,33 @@ class SortieAgentTest(unittest.TestCase):
         }]
         with patch.object(stats, "_read_records", return_value=records):
             models = {row["model"]: row for row in stats.aggregate()["models"]}
+        self.assertIn("Humans", models)
+        self.assertFalse(models["Humans"]["data_available"])
+        self.assertEqual(models["Humans"]["legacy_games_without_data"], 1)
         self.assertEqual(models["mistral-large-latest"]["team_win_rate"], 1.0)
         self.assertEqual(models["mistral-small-latest"]["team_win_rate"], 0.0)
         self.assertEqual(models["mistral-large-latest"]["vote_accuracy"], 0.5)
+
+    def test_les_stats_humaines_sont_agregees_quand_disponibles(self) -> None:
+        records = [{
+            "rounds": 2,
+            "winners": ["Player A", "Player B"],
+            "llms": [],
+            "humans": [{
+                "won": True,
+                "survived": True,
+                "eliminated_round": None,
+                "votes_total": 2,
+                "votes_correct": 1,
+            }],
+        }]
+        with patch.object(stats, "_read_records", return_value=records):
+            result = stats.aggregate()
+        humans = next(row for row in result["models"] if row["model"] == "Humans")
+        self.assertTrue(humans["data_available"])
+        self.assertEqual(humans["team_win_rate"], 1.0)
+        self.assertEqual(humans["vote_accuracy"], 0.5)
+        self.assertEqual(result["legacy_games_without_humans"], 0)
 
 
 if __name__ == "__main__":

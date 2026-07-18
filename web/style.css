@@ -461,16 +461,16 @@ input:focus, textarea:focus, select:focus {
 .seat .role.is-llm { color: var(--orange-bright); text-transform: none; }
 .seat .role.is-human { color: var(--gold); }
 .seat-answer {
-  display: -webkit-box;
-  overflow: hidden;
+  display: block;
+  overflow: visible;
   width: 100%;
   min-height: 1.3em;
   margin-top: 2px;
   color: var(--orange);
   font-size: clamp(0.56rem, 0.9vw, 0.68rem);
   line-height: 1.3;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .seat.you .seat-avatar-wrap { box-shadow: 0 0 0 4px rgba(255, 130, 5, 0.12), 0 0 26px rgba(255, 130, 5, 0.28); }
 .seat.you .seat-name::after { color: var(--orange); content: " // you"; font-size: 0.55em; text-transform: uppercase; }
@@ -707,6 +707,7 @@ body[data-phase="game_over"] .question-frame { display: none; }
 .chart .model-group { margin-bottom: 16px; }
 .chart .model-name { margin-bottom: 6px; font-size: 0.78rem; font-weight: 700; word-break: break-word; }
 .chart .model-name small { color: var(--faint); font-weight: 400; }
+.stats-unavailable { margin: 5px 0 0; color: var(--faint); font-size: 0.68rem; }
 .bar-row { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 10px; margin: 4px 0; }
 .bar-label { color: var(--muted); font-size: 0.64rem; text-align: right; }
 .bar-track { position: relative; height: 17px; overflow: hidden; background: rgba(244, 239, 230, 0.07); }

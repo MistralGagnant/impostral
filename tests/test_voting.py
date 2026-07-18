@@ -166,6 +166,8 @@ class VotingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(agent_d.eligible_history[1], ["Player B", "Player A"])
         self.assertEqual(seats[1].votes_total, 2)
         self.assertEqual(seats[3].votes_total, 2)
+        self.assertEqual(seats[0].votes_total, 2)
+        self.assertEqual(seats[2].votes_total, 2)
 
     async def test_missing_invalid_and_failed_votes_receive_a_fallback(self) -> None:
         seats = [
