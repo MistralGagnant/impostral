@@ -1,5 +1,5 @@
-// Capture micro (push-to-talk) + lecture de la file audio TTS.
-// Exposé globalement via window.ImpostralAudio.
+// Push-to-talk microphone capture and queued TTS playback.
+// Exposed globally through window.ImpostralAudio.
 
 (function () {
   let mediaRecorder = null;
@@ -12,7 +12,7 @@
     return stream;
   }
 
-  // Démarre l'enregistrement. Renvoie true si OK.
+  // Start recording. Returns true on success.
   async function startRecording() {
     try {
       const s = await ensureStream();
@@ -24,12 +24,12 @@
       mediaRecorder.start();
       return true;
     } catch (err) {
-      console.warn("Micro indisponible :", err);
+      console.warn("Microphone unavailable:", err);
       return false;
     }
   }
 
-  // Stoppe et renvoie l'audio encodé base64 (sans préfixe data:).
+  // Stop and return base64-encoded audio without a data URL prefix.
   function stopRecording() {
     return new Promise((resolve) => {
       if (!mediaRecorder || mediaRecorder.state === "inactive") {
@@ -52,7 +52,7 @@
     return mediaRecorder && mediaRecorder.state === "recording";
   }
 
-  // --- File de lecture audio (les clips TTS ne se chevauchent pas) ---
+  // --- Audio playback queue: TTS clips never overlap ---
   const queue = [];
   let playing = false;
 

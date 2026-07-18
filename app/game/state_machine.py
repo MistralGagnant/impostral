@@ -1,12 +1,11 @@
-"""Moteur de déroulé d'une partie : QUESTION → DÉLIBÉRATION → VOTE → RÉSOLUTION.
+"""Game flow engine: QUESTION -> DELIBERATION -> VOTE -> RESOLUTION.
 
-Points clés :
-- Anonymisation : toute prise de parole passe par `_speak` → TTS voix du siège.
-- Anti-tell de timing : en phase QUESTION, les réponses sont collectées pendant
-  toute la fenêtre puis révélées groupées, dans un ordre aléatoire, avec une
-  cadence fixe (`reveal_gap_seconds`). Un LLM ne « répond » jamais plus vite qu'un
-  humain.
-- Les agents ignorent qui est humain : ils ne reçoivent que le transcript.
+Key properties:
+- Anonymization: every utterance passes through `_speak` and the seat's TTS voice.
+- Timing protection: QUESTION answers are collected for the full window, then
+  revealed as a shuffled group at a fixed cadence (`reveal_gap_seconds`). An LLM
+  never appears to answer faster than a human.
+- Agents do not know who is human; they only receive the transcript.
 """
 from __future__ import annotations
 
@@ -31,7 +30,7 @@ class GameEngine:
         self.used_questions: set[str] = set()
 
     # ------------------------------------------------------------------
-    # Boucle principale
+    # Main loop
     # ------------------------------------------------------------------
     async def run(self) -> None:
         try:
@@ -39,7 +38,7 @@ class GameEngine:
             await asyncio.sleep(1.0)
             while True:
                 self.room.round_no += 1
-                await self._system(f"— Manche {self.room.round_no} —")
+                await self._system(f"— Round {self.room.round_no} —")
 
                 await self._question_phase()
                 if self._check_end():
@@ -57,11 +56,11 @@ class GameEngine:
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
-            log.exception("Le moteur de jeu a planté")
-            await self._system("Une erreur interne a interrompu la partie.")
+            log.exception("Game engine crashed")
+            await self._system("An internal error interrupted the game.")
 
     # ------------------------------------------------------------------
-    # Phase QUESTION
+    # QUESTION phase
     # ------------------------------------------------------------------
     async def _question_phase(self) -> None:
         self.room.phase = Phase.QUESTION
@@ -75,7 +74,7 @@ class GameEngine:
         await self._broadcast_state()
 
         alive = self.room.alive_seats()
-        # Collecte concurrente ; chaque tâche renvoie (seat_id, texte).
+        # Collect concurrently; each task returns (seat_id, text).
         tasks = [asyncio.ensure_future(self._collect_answer(s, question, dur)) for s in alive]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -85,11 +84,11 @@ class GameEngine:
                 sid, text = res
                 answers[sid] = text or "(silence)"
 
-        # Révélation groupée, ordre aléatoire, cadence fixe (anti-tell).
+        # Reveal as a shuffled group at a fixed cadence to hide response timing.
         order = list(answers.keys())
         random.shuffle(order)
         for sid in order:
-            await self._speak(self.room.seats[sid], answers[sid], context="réponse")
+            await self._speak(self.room.seats[sid], answers[sid], context="answer")
 
     async def _collect_answer(self, seat, question: str, dur: int) -> tuple[str, str]:
         if seat.kind == "llm":
@@ -99,7 +98,7 @@ class GameEngine:
         return seat.id, await self._payload_to_text(payload)
 
     # ------------------------------------------------------------------
-    # Phase DÉLIBÉRATION
+    # DELIBERATION phase
     # ------------------------------------------------------------------
     async def _deliberation_phase(self) -> None:
         self.room.phase = Phase.DELIBERATION
@@ -115,13 +114,13 @@ class GameEngine:
         random.shuffle(askers)
         idx = 0
 
-        # Plafond d'échanges : borne la phase même quand les réponses arrivent
-        # instantanément (agents rapides), pour ne pas noyer le transcript.
+        # Cap exchanges even when fast agents answer immediately, so the
+        # transcript remains readable.
         max_exchanges = max(2, len(self.room.alive_seats()) * 2)
         done = 0
 
-        # On enchaîne des échanges (question dirigée → réponse) tant qu'il reste
-        # du temps, au moins deux sièges vivants, et sous le plafond.
+        # Continue targeted question-and-answer exchanges while time remains,
+        # at least two seats are active, and the cap has not been reached.
         while (loop.time() < end_at and done < max_exchanges
                and len(self.room.alive_seats()) >= 2):
             asker = askers[idx % len(askers)]
@@ -134,8 +133,7 @@ class GameEngine:
                 done += 1
 
     async def _one_exchange(self, asker, remaining: int) -> bool:
-        """Réalise un échange (question dirigée → réponse). Renvoie True si un
-        échange a bien eu lieu (l'asker n'a pas passé)."""
+        """Run one targeted exchange and return True when the asker participates."""
         others = self.room.alive_ids(exclude=asker.id)
         if not others:
             return False
@@ -144,19 +142,19 @@ class GameEngine:
             action = await asker.agent.deliberation_action(self.room.render_transcript(), others)
             if action["action"] != "ask":
                 return False
-            target_id, q_text = action["target"], action["text"] or "Peux-tu développer ?"
+            target_id, q_text = action["target"], action["text"] or "Could you elaborate?"
         else:
             payload = await self._request_human(
                 asker, mode="deliberation", dur=min(remaining, 25), targets=others
             )
             if not payload or not payload.get("target"):
-                return False  # le joueur a passé
+                return False  # The player skipped.
             target_id = payload["target"]
             q_text = await self._payload_to_text(payload)
             if target_id not in others:
                 return False
 
-        await self._speak(asker, q_text or "Peux-tu développer ?", context=f"à {target_id}")
+        await self._speak(asker, q_text or "Could you elaborate?", context=f"to {target_id}")
 
         target = self.room.seats.get(target_id)
         if target is None or not target.alive:
@@ -166,11 +164,11 @@ class GameEngine:
         else:
             payload = await self._request_human(target, mode="reply", dur=min(remaining, 25))
             reply = await self._payload_to_text(payload)
-        await self._speak(target, reply or "(silence)", context=f"répond à {asker.id}")
+        await self._speak(target, reply or "(silence)", context=f"reply to {asker.id}")
         return True
 
     # ------------------------------------------------------------------
-    # Phase VOTE
+    # VOTE phase
     # ------------------------------------------------------------------
     async def _vote_phase(self) -> None:
         self.room.phase = Phase.VOTE
@@ -205,10 +203,10 @@ class GameEngine:
             return None
         top = max(tally.values())
         leaders = [sid for sid, n in tally.items() if n == top]
-        return random.choice(leaders)  # égalité tranchée au hasard
+        return random.choice(leaders)  # Break ties randomly.
 
     # ------------------------------------------------------------------
-    # Phase RÉSOLUTION
+    # RESOLUTION phase
     # ------------------------------------------------------------------
     async def _resolution_phase(self) -> None:
         self.room.phase = Phase.RESOLUTION
@@ -219,17 +217,17 @@ class GameEngine:
             role = seat.kind if self.settings.reveal_role_on_elimination else None
             await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
             if role:
-                label = "un HUMAIN" if role == "human" else "une IA"
-                await self._system(f"{eliminated} est éliminé… c'était {label}.")
+                label = "a HUMAN" if role == "human" else "an AI"
+                await self._system(f"{eliminated} is out… they were {label}.")
             else:
-                await self._system(f"{eliminated} est éliminé.")
+                await self._system(f"{eliminated} is out.")
         else:
-            await self._system("Personne n'est éliminé cette manche.")
+            await self._system("No one is eliminated this round.")
         await self._broadcast_state()
         await asyncio.sleep(1.5)
 
     # ------------------------------------------------------------------
-    # Fin de partie
+    # Game over
     # ------------------------------------------------------------------
     def _check_end(self) -> bool:
         return not self.room.humans_alive() or not self.room.llms_alive()
@@ -239,18 +237,18 @@ class GameEngine:
         if not self.room.humans_alive():
             winner = "llms"
         else:
-            winner = "humans"  # humains survivants (ou tous les LLM éliminés)
+            winner = "humans"  # Humans survived, or all LLMs were eliminated.
         roles = {s.id: s.kind for s in self.room.seats.values()}
         await self.room.broadcast(events.srv_game_over(winner=winner, roles=roles))
-        msg = ("Les IA ont éliminé tous les humains." if winner == "llms"
-               else "Des humains ont survécu — ils l'emportent !")
-        await self._system("Partie terminée. " + msg)
+        msg = ("AI eliminated every human." if winner == "llms"
+               else "Humans survived — they win!")
+        await self._system("Game over. " + msg)
 
     # ------------------------------------------------------------------
-    # Utilitaires
+    # Utilities
     # ------------------------------------------------------------------
     async def _speak(self, seat, text: str, context: str = "") -> None:
-        """Anonymise et diffuse une prise de parole (texte + audio voix du siège)."""
+        """Anonymize and broadcast an utterance with the seat's synthetic voice."""
         self.room.add_utterance(seat.id, text, context)
         audio_url = await tts.synthesize(text, voice=seat.voice)
         await self.room.broadcast(
@@ -260,10 +258,10 @@ class GameEngine:
 
     async def _request_human(self, seat, *, mode: str, dur: int,
                              targets: Optional[list[str]] = None) -> Optional[dict]:
-        """Demande une saisie au siège humain et attend sa réponse (ou timeout)."""
+        """Request human input and wait for a response or timeout."""
         if not seat.connected:
             return None
-        # Future créée AVANT l'envoi pour éviter de perdre une réponse très rapide.
+        # Create the Future before sending, so an immediate response cannot be lost.
         fut = self.room.expect_input(seat.id)
         await self.room.send_seat(
             seat.id, events.srv_request_input(mode=mode, deadline=dur, targets=targets)

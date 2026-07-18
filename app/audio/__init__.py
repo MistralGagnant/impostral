@@ -1,1 +1,1 @@
-"""Pipeline audio : STT (Voxtral) en entrée, TTS (Voxtral) en sortie."""
+"""Audio pipeline: Voxtral STT input and Voxtral TTS output."""

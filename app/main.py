@@ -1,4 +1,4 @@
-"""Application FastAPI : WebSocket de jeu, endpoint audio, service du front."""
+"""FastAPI application: game WebSocket, audio endpoint, and web client."""
 from __future__ import annotations
 
 import asyncio
@@ -19,9 +19,11 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("impostral")
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 app = FastAPI(title="Impostral")
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 
 @app.get("/")
@@ -50,7 +52,7 @@ async def audio(clip_id: str) -> Response:
 
 
 def _normalize(msg) -> dict:
-    """Traduit un message client validé en payload pour le moteur."""
+    """Convert a validated client message into a game-engine payload."""
     t = msg.type
     if t == "audio_blob":
         return {"audio_b64": msg.audio_b64, "text": msg.text}
@@ -67,7 +69,7 @@ async def _maybe_start(room) -> None:
     room.started = True
     engine = GameEngine(room)
     room.engine_task = asyncio.create_task(engine.run())
-    log.info("Partie démarrée dans la salle %s", room.id)
+    log.info("Game started in room %s", room.id)
 
 
 @app.websocket("/ws/{room_id}")
@@ -93,33 +95,33 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                     )
                 )
                 if seat_id is None:
-                    await ws.send_json(events.srv_system(text="Salle pleine : vous êtes spectateur."))
+                    await ws.send_json(events.srv_system(text="Room full: you are spectating."))
                 else:
                     await room.broadcast(events.srv_system(
-                        text=f"Un joueur a rejoint ({seat_id})."))
+                        text=f"A player joined ({seat_id})."))
                 continue
 
             if seat_id is None:
-                continue  # spectateur : aucune action de jeu
+                continue  # Spectators cannot submit game actions.
 
             if msg.type == "ready":
                 room.ready_seats.add(seat_id)
-                await room.broadcast(events.srv_system(text=f"{seat_id} est prêt."))
+                await room.broadcast(events.srv_system(text=f"{seat_id} is ready."))
                 await _maybe_start(room)
                 continue
 
-            # audio_blob / direct_question / submit_vote → entrée attendue
+            # audio_blob / direct_question / submit_vote -> expected input
             room.resolve_input(seat_id, _normalize(msg))
 
     except WebSocketDisconnect:
         pass
     except Exception:  # noqa: BLE001
-        log.exception("Erreur dans la boucle WebSocket")
+        log.exception("Error in WebSocket loop")
     finally:
         if seat_id:
             room.cancel_input(seat_id)
         room.detach(ws)
         try:
-            await room.broadcast(events.srv_system(text="Un joueur s'est déconnecté."))
+            await room.broadcast(events.srv_system(text="A player disconnected."))
         except Exception:  # noqa: BLE001
             pass

@@ -1,1 +1,1 @@
-"""Impostral — jeu de déduction sociale humains vs LLM."""
+"""Impostral — a human-versus-LLM social deduction game."""

@@ -1,9 +1,8 @@
-"""Construction du pool de voix TTS à partir des voix preset Voxtral.
+"""Build the TTS voice pool from Voxtral preset voices.
 
-On récupère les voix preset une fois (cache), on garde un locuteur distinct par
-voix (variante « neutre » de préférence) et on place les voix de la langue cible
-en tête. En mode mock (ou en cas d'échec réseau), on renvoie les étiquettes de
-`settings.voice_pool` — le TTS échouera alors proprement en texte seul.
+Preset voices are fetched once and cached. The pool keeps one voice per speaker,
+prefers neutral variants, and places the target language first. Mock mode and
+network failures return `settings.voice_pool`, allowing graceful text-only play.
 """
 from __future__ import annotations
 
@@ -20,7 +19,7 @@ _NEUTRAL_HINTS = ("neutral", "balanced", "neutre")
 
 @lru_cache
 def _preset_voice_ids() -> tuple[str, ...]:
-    """Un id de voix par locuteur distinct, langue cible en tête. Vide si mock."""
+    """Return one voice ID per speaker with the target language first."""
     client = get_client()
     if client is None:
         return ()
@@ -39,10 +38,10 @@ def _preset_voice_ids() -> tuple[str, ...]:
             if offset >= total or not d.get("items"):
                 break
     except Exception as exc:  # noqa: BLE001
-        log.warning("Impossible de lister les voix preset : %s", exc)
+        log.warning("Could not list preset voices: %s", exc)
         return ()
 
-    # Regroupe par locuteur (nom avant « - »), choisit une variante neutre.
+    # Group variants by speaker name and prefer a neutral variant.
     by_speaker: dict[str, dict] = {}
     for it in items:
         speaker = str(it.get("name", "")).split(" - ")[0].strip() or it.get("id")
@@ -55,25 +54,25 @@ def _preset_voice_ids() -> tuple[str, ...]:
     def lang_ok(it: dict) -> bool:
         return any(str(l).startswith(prefix) for l in (it.get("languages") or []))
 
-    # Têtes : un locuteur distinct chacun (langue cible d'abord, ordre stable).
+    # First choices: one distinct speaker each, target language first.
     heads = list(by_speaker.values())
     heads.sort(key=lambda it: (not lang_ok(it), str(it.get("name", ""))))
     head_ids = [it["id"] for it in heads if it.get("id")]
 
-    # Réserve : toutes les autres variantes, pour éviter de réutiliser une voix
-    # quand il y a plus de sièges que de locuteurs distincts.
+    # Reserve: remaining variants prevent immediate reuse when there are more
+    # seats than distinct speakers.
     head_set = set(head_ids)
     rest = [it for it in items if it.get("id") and it["id"] not in head_set]
     rest.sort(key=lambda it: (not lang_ok(it), str(it.get("name", ""))))
     ids = head_ids + [it["id"] for it in rest]
 
-    log.info("Pool de voix preset : %d locuteurs distincts, %d voix au total (%s en tête)",
+    log.info("Preset voice pool: %d distinct speakers, %d voices total (%s first)",
              len(head_ids), len(ids), prefix)
     return tuple(ids)
 
 
 def get_pool() -> list[str]:
-    """Renvoie la liste des voix (ids réels hors mock, étiquettes sinon)."""
+    """Return real voice IDs outside mock mode, otherwise fallback labels."""
     settings = get_settings()
     if settings.mock_mode:
         return list(settings.voice_pool)

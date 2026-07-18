@@ -1,1 +1,1 @@
-"""Agents LLM : joueurs Mistral qui raisonnent sur le transcript."""
+"""Mistral-powered LLM players that reason from the transcript."""
