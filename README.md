@@ -5,8 +5,8 @@ A web-based social bluffing game **humans vs LLM**, inspired by a Jubilee video.
 Humans and LLM agents (Mistral) share a room. In each round, everyone answers the same
 **question**, then immediately takes part in a shared **vote** to identify an AI.
 Each AI competes independently and tries to pass as human. Every active seat votes, and a tied
-ballot triggers a runoff between the tied seats. One player is eliminated per round. The winning
-AI is the last one eliminated; surviving AIs tie if the round limit is reached.
+ballot triggers a runoff between the tied seats. One player is eliminated per round. Humans win
+by eliminating every AI; surviving AIs tie if the round limit is reached.
 
 **Core mechanic — voice anonymization**: any speech (human or LLM) is transcribed and resynthesized
 into **Voxtral synthetic voice fixed by seat**. It is impossible to distinguish a human from an AI by
@@ -29,8 +29,9 @@ cp .env.example .env   # then fill in MISTRAL_API_KEY
 
 Open http://localhost:8000 and click **Play**. Quick play joins the oldest public lobby with
 a free human seat, or creates one with the default composition (3 humans + 3 AIs). Public
-games start automatically when all human seats are connected. Named private lobbies remain
-available under **Private lobby options** and keep the explicit ready step.
+games start automatically when all human seats are connected, or after 15 seconds with the
+humans currently present. Named private lobbies remain available under **Private lobby
+options** and keep the explicit ready step for an immediate full-lobby start.
 
 Quick play uses anonymous browser and tab identifiers stored locally. There is no sign-up,
 account, email address, or public player profile. The current in-memory lobby manager is

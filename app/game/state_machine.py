@@ -256,12 +256,14 @@ class GameEngine:
         surviving_llms = [s.id for s in self.room.llms_alive()]
         if len(surviving_humans) == 1 and len(surviving_llms) == 1:
             winners = surviving_humans + surviving_llms
+            winner_type = "shared"
             result = (
                 f"{surviving_humans[0]} and {surviving_llms[0]} win together — "
                 "one human and one AI are impossible to tell apart."
             )
         elif surviving_llms:
             winners = surviving_llms
+            winner_type = "agents"
             if not self.room.humans_alive():
                 result = "The AIs have won — no humans remain."
             else:
@@ -270,19 +272,20 @@ class GameEngine:
                     if len(winners) > 1
                     else f"{winners[0]} remained undetected and wins the game."
                 )
+        elif surviving_humans:
+            winners = surviving_humans
+            winner_type = "humans"
+            result = "The humans have won — every AI was eliminated."
         else:
-            winners = self.eliminated_llms[-1:]  # dernière IA éliminée
-            result = (
-                f"{winners[0]} was the last AI eliminated and wins the game."
-                if winners
-                else "No winning AI could be determined."
-            )
+            winners = []
+            winner_type = "none"
+            result = "No winner could be determined."
         roles = {s.id: s.kind for s in self.room.seats.values()}
         models = {s.id: s.model for s in self.room.seats.values() if s.model}
         stats.record_game(self.room, winners)
         await self.room.broadcast(
             events.srv_game_over(
-                winner="shared" if surviving_humans and surviving_llms else "agents",
+                winner=winner_type,
                 winners=winners, roles=roles,
                 models=models, message=result,
             )
@@ -347,7 +350,14 @@ class GameEngine:
         seats = [s.public() for s in self.room.seats.values()]
         await self.room.broadcast(
             events.srv_room_state(
-                seats=seats, phase=self.room.phase.value, round_no=self.room.round_no, you=None
+                seats=seats, phase=self.room.phase.value, round_no=self.room.round_no,
+                you=None,
+                lobby_wait_remaining=(
+                    0
+                    if getattr(self.room, "started", False)
+                    and self.room.phase == Phase.LOBBY
+                    else None
+                ),
             )
         )
 

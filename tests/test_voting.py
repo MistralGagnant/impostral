@@ -126,6 +126,28 @@ class VotingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(game_over["winners"], ["Player A", "Player B"])
         self.assertIn("impossible to tell apart", game_over["message"])
 
+    async def test_humans_win_when_every_ai_is_eliminated(self) -> None:
+        ai = StubSeat("Player B", "llm", StubAgent(), "mistral-large-latest")
+        ai.alive = False
+        room = StubRoom([
+            StubSeat("Player A", "human"),
+            ai,
+            StubSeat("Player C", "human"),
+        ])
+        engine = make_engine(room)
+        engine.eliminated_llms = [ai.id]
+
+        with patch("app.game.state_machine.stats.record_game"):
+            await engine._game_over()
+
+        game_over = next(msg for msg in room.messages if msg["type"] == "game_over")
+        self.assertEqual(game_over["winner"], "humans")
+        self.assertEqual(game_over["winners"], ["Player A", "Player C"])
+        self.assertEqual(
+            game_over["message"],
+            "The humans have won — every AI was eliminated.",
+        )
+
     async def test_every_seat_votes_and_a_tie_triggers_a_restricted_runoff(self) -> None:
         agent_b = StubAgent(["Player A", "Player A"])
         agent_d = StubAgent(["Player B", "Player B"])

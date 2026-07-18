@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     max_humans: int = 8
     max_rounds: int = 5
     reveal_role_on_elimination: bool = True
+    human_wait_seconds: int = 15
 
     # --- Ephemeral lobby lifecycle --------------------------------------
     matchmaking_reservation_seconds: int = 20

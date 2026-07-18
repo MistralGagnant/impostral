@@ -29,6 +29,13 @@ class WebUiTest(unittest.TestCase):
         self.assertIn("let playbackRate = 1.1", audio_js)
         self.assertIn("audio.playbackRate = playbackRate", audio_js)
 
+    def test_lobby_wait_is_explained_clearly(self) -> None:
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("let humanWaitSeconds = 15", app_js)
+        self.assertIn('phasePrompt.textContent = "Waiting for players…"', app_js)
+        self.assertIn('"Waiting for players · "', app_js)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 Social bluffing game where **humans** and **Mistral LLM agents** share a room.
 Every AI competes independently to pass as human, while all active players vote
-during elimination rounds. The last AI eliminated wins. Each round follows:
+during elimination rounds. Humans win by eliminating every AI. Each round follows:
 **question -> vote -> resolution**.
 
 Status: **functional POC**, validated end to end with chat, Voxtral STT, and TTS.
@@ -34,7 +34,8 @@ codename field may be left blank. `POST /matchmaking`
 atomically reserves a human seat in the oldest waiting public lobby, or creates a
 public lobby with the default composition. The browser opens the room WebSocket
 with that short-lived reservation ticket; public players are automatically ready
-and the game starts when all human seats are connected. A stable anonymous
+and the game starts when all human seats are connected or after a configurable
+15-second wait with the humans currently present. A stable anonymous
 browser ID and a tab-specific session ID are stored locally for reconnection.
 There is no sign-up or public user profile.
 
@@ -152,7 +153,7 @@ games; the client retries its WebSocket and returns to Play when the room is gon
 - A first-ballot tie triggers a second vote restricted to the tied seats; a persistent tie is then broken randomly.
 - The selected seat is eliminated regardless of role, so every completed round eliminates one player.
 - A final human and AI win together because neither can be distinguished from the other.
-- Once every AI is eliminated, the last AI eliminated wins.
+- Once every AI is eliminated, the surviving humans win.
 - At `max_rounds`, all undetected AIs tie.
 
 ## Possible improvements

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import secrets
 import string
@@ -80,6 +81,8 @@ class Room:
     round_no: int = 0
     started: bool = False
     engine_task: Optional[asyncio.Task] = None
+    start_wait_task: Optional[asyncio.Task] = None
+    start_deadline: float = 0.0
     ready_seats: set = field(default_factory=set)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -295,6 +298,28 @@ class Room:
         return bool(humans) and all(
             s.connected and s.id in self.ready_seats for s in humans
         )
+
+    def connected_humans(self) -> list[Seat]:
+        return [
+            seat for seat in self.seats.values()
+            if seat.kind == "human" and seat.connected
+        ]
+
+    def keep_connected_humans(self) -> None:
+        """Drop unfilled human seats immediately before a partial start."""
+        absent_ids = {
+            seat.id for seat in self.seats.values()
+            if seat.kind == "human" and not seat.connected
+        }
+        for seat_id in absent_ids:
+            self.seats.pop(seat_id, None)
+            self.ready_seats.discard(seat_id)
+        self.num_humans = len(self.connected_humans())
+
+    def lobby_wait_remaining(self) -> Optional[int]:
+        if not self.start_deadline or self.started:
+            return None
+        return max(0, math.ceil(self.start_deadline - time.time()))
 
     def release_stale_waiting_seats(self, now: float, reconnect_grace: int) -> None:
         """Release expired reservations and disconnected pre-game claims."""
@@ -519,7 +544,9 @@ class RoomManager:
             ):
                 stale_ids.append(room_id)
         for room_id in stale_ids:
-            self._rooms.pop(room_id, None)
+            room = self._rooms.pop(room_id, None)
+            if room and room.start_wait_task and not room.start_wait_task.done():
+                room.start_wait_task.cancel()
             log.info("Lobby removed: %s", room_id)
 
     def get(self, room_id: str) -> Optional[Room]:

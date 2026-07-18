@@ -83,7 +83,7 @@ def parse_client_message(raw: dict[str, Any]) -> Optional[BaseModel]:
 
 def srv_room_state(
     *, seats: list[dict], phase: str, round_no: int, you: Optional[str],
-    auto_ready: bool = False,
+    auto_ready: bool = False, lobby_wait_remaining: Optional[int] = None,
 ) -> dict:
     return {
         "type": "room_state",
@@ -92,6 +92,7 @@ def srv_room_state(
         "round": round_no,
         "you": you,
         "auto_ready": auto_ready,
+        "lobby_wait_remaining": lobby_wait_remaining,
     }
 
 

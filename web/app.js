@@ -8,6 +8,7 @@
   let currentQuestion = "";
   let currentRound = 0;
   let maxRounds = 5;
+  let humanWaitSeconds = 15;
   let readySent = false;
   let gameFinished = false;
   let currentMatch = null;
@@ -83,6 +84,9 @@
     .then((config) => {
       if (config?.max_rounds) maxRounds = config.max_rounds;
       if (config?.tts_playback_rate) A.setPlaybackRate(config.tts_playback_rate);
+      if (typeof config?.human_wait_seconds === "number") {
+        humanWaitSeconds = config.human_wait_seconds;
+      }
       $("round-total").textContent = maxRounds;
       if (config) {
         humansInput.min = config.min_humans ?? 1;
@@ -313,34 +317,53 @@
     if (msg.phase) {
       phaseName.textContent = PHASE_LABEL[msg.phase] || msg.phase;
     }
+    if (msg.phase === "lobby") phasePrompt.textContent = "Waiting for players…";
     renderMissionStatus();
     renderSeats();
-    if (you && !readySent) {
+    if (you && msg.phase === "lobby") {
+      const remaining = typeof msg.lobby_wait_remaining === "number"
+        ? msg.lobby_wait_remaining
+        : humanWaitSeconds;
       if (msg.auto_ready) {
         readySent = true;
-        showWaiting();
+        showWaiting(remaining);
+      } else if (readySent) {
+        showWaiting(remaining);
       } else {
-        showReady();
+        showReady(remaining);
       }
     }
   }
 
-  function showWaiting() {
+  function showWaiting(remaining = humanWaitSeconds) {
     inputPanel.classList.remove("hidden");
-    inputTimer.textContent = "Waiting for other players…";
     inputControls.innerHTML = "";
+    startLobbyCountdown(remaining);
   }
 
-  function showReady() {
+  function showReady(remaining = humanWaitSeconds) {
     inputPanel.classList.remove("hidden");
-    inputTimer.textContent = "Waiting for other players…";
     inputControls.innerHTML = "";
+    startLobbyCountdown(remaining);
     const btn = mkBtn("I'm ready", () => {
       readySent = true;
       ws.send(JSON.stringify({ type: "ready" }));
-      hideInput();
+      inputControls.innerHTML = "";
     });
     inputControls.appendChild(btn);
+  }
+
+  function startLobbyCountdown(remaining) {
+    if (inputCountdown) clearInterval(inputCountdown);
+    if (remaining <= 0) {
+      inputCountdown = null;
+      inputTimer.textContent = "Starting game…";
+      return;
+    }
+    startCountdown(
+      inputTimer, remaining, (handle) => (inputCountdown = handle),
+      "Waiting for players · ",
+    );
   }
 
   // ------------------------------------------------------------------

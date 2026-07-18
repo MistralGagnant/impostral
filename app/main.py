@@ -46,6 +46,7 @@ async def public_config() -> dict:
         "max_rounds": s.max_rounds,
         "mock_mode": s.mock_mode,
         "tts_playback_rate": s.tts_playback_rate,
+        "human_wait_seconds": s.human_wait_seconds,
     }
 
 
@@ -138,18 +139,76 @@ def _normalize(msg) -> dict:
     return {}
 
 
-async def _maybe_start(room) -> None:
-    if room.started or not room.all_humans_ready():
+async def _launch_game(room, *, allow_partial: bool = False) -> None:
+    if room.started:
         return
+    if allow_partial:
+        room.keep_connected_humans()
+        if not room.connected_humans():
+            return
+    elif not room.all_humans_ready():
+        return
+
     room.started = True
     room.status = "running"
     room.updated_at = time.time()
+    wait_task = room.start_wait_task
+    if wait_task and wait_task is not asyncio.current_task() and not wait_task.done():
+        wait_task.cancel()
+    await room.broadcast(events.srv_system(
+        text=(
+            f"Starting with {room.num_humans} human player"
+            f"{'s' if room.num_humans != 1 else ''}."
+        )
+    ))
+    await room.broadcast(events.srv_room_state(
+        seats=[s.public() for s in room.seats.values()],
+        phase=room.phase.value,
+        round_no=room.round_no,
+        you=None,
+        auto_ready=room.visibility == "public",
+        lobby_wait_remaining=0,
+    ))
     engine = GameEngine(room)
     room.engine_task = asyncio.create_task(engine.run())
     room.engine_task.add_done_callback(
         lambda _task: asyncio.create_task(rooms.cleanup())
     )
     log.info("Game started in room %s", room.id)
+
+
+async def _start_after_wait(room, delay: float) -> None:
+    try:
+        await asyncio.sleep(max(0, delay))
+        await _launch_game(room, allow_partial=True)
+    except asyncio.CancelledError:
+        return
+
+
+async def _maybe_start(room) -> None:
+    if room.started:
+        return
+    if room.all_humans_ready():
+        await _launch_game(room)
+        return
+    if not room.connected_humans():
+        return
+
+    now = time.time()
+    if not room.start_deadline:
+        wait_seconds = max(0, get_settings().human_wait_seconds)
+        room.start_deadline = now + wait_seconds
+        await room.broadcast(events.srv_system(
+            text=(
+                f"Waiting up to {wait_seconds} seconds for more human players. "
+                "It should be quick."
+            )
+        ))
+        room.start_wait_task = asyncio.create_task(
+            _start_after_wait(room, wait_seconds)
+        )
+    elif room.start_deadline <= now:
+        await _launch_game(room, allow_partial=True)
 
 
 @app.websocket("/ws/{room_id}")
@@ -193,6 +252,7 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                         seats=seats, phase=room.phase.value,
                         round_no=room.round_no, you=seat_id,
                         auto_ready=room.visibility == "public",
+                        lobby_wait_remaining=room.lobby_wait_remaining(),
                     )
                 )
                 if seat_id is None:
@@ -202,15 +262,16 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                         room.ready_seats.add(seat_id)
                     await room.broadcast(events.srv_system(
                         text=f"A player joined ({seat_id})."))
+                    await room.resend_pending(seat_id)
+                    await _maybe_start(room)
                     await room.broadcast(events.srv_room_state(
                         seats=[s.public() for s in room.seats.values()],
                         phase=room.phase.value,
                         round_no=room.round_no,
                         you=None,
                         auto_ready=room.visibility == "public",
+                        lobby_wait_remaining=room.lobby_wait_remaining(),
                     ))
-                    await room.resend_pending(seat_id)
-                    await _maybe_start(room)
                 continue
 
             if seat_id is None:
@@ -246,6 +307,7 @@ async def ws_endpoint(ws: WebSocket, room_id: str) -> None:
                         round_no=room.round_no,
                         you=None,
                         auto_ready=room.visibility == "public",
+                        lobby_wait_remaining=room.lobby_wait_remaining(),
                     ))
                 except Exception:  # noqa: BLE001
                     pass
