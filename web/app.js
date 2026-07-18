@@ -495,11 +495,11 @@
     const banner = document.createElement("div");
     banner.className = "winner";
     const winners = msg.winners || [];
-    banner.textContent = winners.length === 1
+    banner.textContent = msg.message || (winners.length === 1
       ? `${winners[0]} wins the game!`
       : winners.length > 1
         ? `${winners.join(", ")} survive and tie.`
-        : "Game over.";
+        : "Game over.");
     phasePrompt.textContent = "The hunt is over.";
     const arena = document.querySelector(".arena-viz");
     arena.querySelector(".elim-overlay")?.remove();

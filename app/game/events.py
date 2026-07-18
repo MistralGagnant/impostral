@@ -119,12 +119,15 @@ def srv_elimination(*, seat: str, role: Optional[str]) -> dict:
     return {"type": "elimination", "seat": seat, "role": role}
 
 
-def srv_game_over(*, winner: str, winners: list[str], roles: dict[str, str]) -> dict:
+def srv_game_over(
+    *, winner: str, winners: list[str], roles: dict[str, str], message: str = ""
+) -> dict:
     return {
         "type": "game_over",
         "winner": winner,
         "winners": winners,
         "roles": roles,
+        "message": message,
     }
 
 
