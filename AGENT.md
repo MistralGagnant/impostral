@@ -50,8 +50,8 @@ The default room has two humans and four agents, using Large, Medium, Small, and
 Ministral respectively. Agents also use different personas, temperatures, and
 persona-specific human few-shot examples from `PERSONAS` in
 `app/agents/llm_agent.py`. Guided decoding enforces a strict JSON Schema with
-private `thinking` and one public `output` utterance of at most 180 characters
-and two brief sentences. Outputs may be ultra-short, deflective, or strongly
+private `thinking` and one public `output` utterance of at most 100 characters,
+preferably 3 to 10 words. Outputs may be ultra-short, deflective, or strongly
 accusatory. Only `output` enters the transcript.
 
 ## Model performance tracking

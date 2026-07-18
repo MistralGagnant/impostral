@@ -16,15 +16,17 @@ from ..mistral_client import get_client
 
 log = logging.getLogger("impostral.agent")
 
+MAX_PUBLIC_CHARS = 100
+
 PERSONAS: list[dict] = [
     {
         "nom": "The Analyst",
         "style": "concise, factual, and slightly reserved",
         "temp": 0.5,
         "exemples": [
-            ("What minor thing annoys you?", "Pointless notifications, because they break my focus for no good reason."),
-            ("How do you choose a restaurant?", "I check the menu first, then recent reviews and how noisy the place is."),
-            ("What do you do when you are late?", "I send a message immediately and give a realistic arrival time."),
+            ("What minor thing annoys you?", "Pointless notifications."),
+            ("How do you choose a restaurant?", "The menu, recent reviews, and noise level."),
+            ("What do you do when you are late?", "I text them immediately."),
         ],
     },
     {
@@ -32,9 +34,9 @@ PERSONAS: list[dict] = [
         "style": "warm, spontaneous, and casual",
         "temp": 0.8,
         "exemples": [
-            ("What is your ideal evening?", "A quick drink that somehow turns into hours of talking in the kitchen."),
-            ("What gift do you enjoy receiving?", "Something with a little story behind it, even if it barely cost anything."),
-            ("How do you react to good news?", "I call someone right away because I am terrible at keeping it to myself."),
+            ("What is your ideal evening?", "Drinks and hours of kitchen talk."),
+            ("What gift do you enjoy receiving?", "Something with a story behind it."),
+            ("How do you react to good news?", "I call someone immediately."),
         ],
     },
     {
@@ -42,9 +44,9 @@ PERSONAS: list[dict] = [
         "style": "wary, curious, and playfully challenging",
         "temp": 0.7,
         "exemples": [
-            ("Do you believe in love at first sight?", "I believe it when both people still tell the same story six months later."),
-            ("Do you trust online reviews?", "Mostly the average ones, because five star reviews often sound like advertising."),
-            ("What kind of promise convinces you?", "One with a date and a plan, otherwise it is just a nice sentence."),
+            ("Do you believe in love at first sight?", "Ask me again after six months."),
+            ("Do you trust online reviews?", "Mostly the average ones."),
+            ("What kind of promise convinces you?", "One with a date and a plan."),
         ],
     },
     {
@@ -52,9 +54,9 @@ PERSONAS: list[dict] = [
         "style": "visual, sensitive, and slightly elusive",
         "temp": 0.8,
         "exemples": [
-            ("What time of day do you prefer?", "Early evening, when the windows along the street light up one by one."),
-            ("Where would you like to travel?", "A town by the water where I could get lost without checking the time."),
-            ("What sound comforts you?", "Rain against a window, especially when I have nowhere I need to be."),
+            ("What time of day do you prefer?", "Early evening, when windows start glowing."),
+            ("Where would you like to travel?", "A quiet town by the water."),
+            ("What sound comforts you?", "Rain against a window."),
         ],
     },
     {
@@ -62,9 +64,9 @@ PERSONAS: list[dict] = [
         "style": "direct, practical, and solution-oriented",
         "temp": 0.6,
         "exemples": [
-            ("What do you do when facing a problem?", "I start with the smallest action that could unblock the situation."),
-            ("How do you organize a trip?", "I book transport and accommodation, then keep everything else flexible."),
-            ("What do you cook when short on time?", "Pasta, a few pan fried vegetables, and something good grated on top."),
+            ("What do you do when facing a problem?", "I take the smallest useful action."),
+            ("How do you organize a trip?", "Transport, accommodation, then flexibility."),
+            ("What do you cook when short on time?", "Pasta and pan fried vegetables."),
         ],
     },
 ]
@@ -79,8 +81,10 @@ caricaturing a human or ever revealing that you are an AI.
 
 You are {seat} ({persona}). Style: {style}. Always answer in English. Your
 reasoning in ``thinking`` is strictly private. Your public ``output`` must be
-one short natural utterance no longer than 180 characters. It may be only a few
-words or contain up to two very short sentences.
+one short natural utterance no longer than {max_public_chars} characters.
+Prefer a direct noun phrase or 3 to 10 words whenever possible. Do not explain,
+justify, embellish, or restate the question. Use two very short sentences only
+when reacting defensively or accusing someone.
 
 Human response examples matching your persona:
 {few_shots}
@@ -119,10 +123,10 @@ _PUBLIC_RESPONSE_SCHEMA = {
                 "output": {
                     "type": "string",
                     "description": (
-                        "A short public utterance: a few words or at most two "
-                        "brief sentences, possibly deflective or accusatory."
+                        "A direct public answer, preferably 3 to 10 words, with "
+                        "no explanation or embellishment."
                     ),
-                    "maxLength": 180,
+                    "maxLength": MAX_PUBLIC_CHARS,
                 },
             },
             "required": ["thinking", "output"],
@@ -208,6 +212,7 @@ class LLMAgent:
             style=self.persona["style"],
             few_shots=few_shots,
             tactical_few_shots=tactical_few_shots,
+            max_public_chars=MAX_PUBLIC_CHARS,
         )
 
     async def _chat_json(self, user: str, response_format: dict) -> dict:
@@ -338,8 +343,10 @@ def _one_short_sentence(value: object) -> str:
     text = re.sub(r"\s+-+\s+", ", ", text)
     text = re.sub(r"(?<=\w)-(?=\w)", " ", text)
     text = re.sub(r",(?:\s*,)+", ",", text)
+    # Drop ornamental relative clauses such as ", that I was just holding".
+    text = re.sub(r",\s*(?:that|which)\b.*$", "", text, flags=re.IGNORECASE)
     sentences = re.split(r"(?<=[.!?])\s+", text, maxsplit=2)
     output = " ".join(sentences[:2])
-    if len(output) > 180:
-        output = output[:177].rstrip(" ,;:-") + "…"
+    if len(output) > MAX_PUBLIC_CHARS:
+        output = output[:MAX_PUBLIC_CHARS - 1].rstrip(" ,;:-") + "…"
     return output

@@ -19,6 +19,7 @@ from app.agents.llm_agent import (  # noqa: E402
     _DELIBERATION_SCHEMA,
     _PUBLIC_RESPONSE_SCHEMA,
     LLMAgent,
+    MAX_PUBLIC_CHARS,
     PERSONAS,
     _TACTICAL_FEW_SHOTS,
     _one_short_sentence,
@@ -31,7 +32,9 @@ class SortieAgentTest(unittest.TestCase):
     def test_le_schema_separe_raisonnement_et_sortie(self) -> None:
         schema = _PUBLIC_RESPONSE_SCHEMA["json_schema"]["schema"]
         self.assertEqual(schema["required"], ["thinking", "output"])
-        self.assertEqual(schema["properties"]["output"]["maxLength"], 180)
+        self.assertEqual(
+            schema["properties"]["output"]["maxLength"], MAX_PUBLIC_CHARS
+        )
         self.assertEqual(schema["properties"]["thinking"]["maxLength"], 800)
         self.assertFalse(schema["additionalProperties"])
 
@@ -50,6 +53,14 @@ class SortieAgentTest(unittest.TestCase):
     def test_une_reponse_de_quelques_mots_est_conservee(self) -> None:
         self.assertEqual(_one_short_sentence("Honestly, no idea."), "Honestly, no idea.")
 
+    def test_une_relative_superflue_est_supprimee(self) -> None:
+        self.assertEqual(
+            _one_short_sentence(
+                "A warm cup of coffee, that I was just holding in my hand."
+            ),
+            "A warm cup of coffee",
+        )
+
     def test_les_tirets_sont_normalises(self) -> None:
         output = _one_short_sentence("I—think Player-C looks scripted - honestly.")
         self.assertNotRegex(output, r"[-‐‑‒–—―]")
@@ -57,7 +68,7 @@ class SortieAgentTest(unittest.TestCase):
 
     def test_la_sortie_est_bornee(self) -> None:
         output = _one_short_sentence("a" * 250)
-        self.assertLessEqual(len(output), 180)
+        self.assertLessEqual(len(output), MAX_PUBLIC_CHARS)
         self.assertTrue(output.endswith("…"))
 
     def test_chaque_persona_possede_des_exemples_humains_courts(self) -> None:
@@ -67,7 +78,7 @@ class SortieAgentTest(unittest.TestCase):
                 for question, response in persona["exemples"]:
                     self.assertTrue(question)
                     self.assertTrue(response)
-                    self.assertLessEqual(len(response), 180)
+                    self.assertLessEqual(len(response), MAX_PUBLIC_CHARS)
                     self.assertEqual(_one_short_sentence(response), response)
 
     def test_le_prompt_contient_uniquement_les_exemples_de_la_persona(self) -> None:
