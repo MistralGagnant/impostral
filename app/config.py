@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     chat_model_small: str = "mistral-small-latest"
     chat_model_ministral: str = "ministral-8b-latest"
     stt_model: str = "voxtral-mini-latest"
+    stt_language: str = "en"
     tts_model: str = "voxtral-mini-tts-latest"
 
     # --- Model performance tracking -------------------------------------

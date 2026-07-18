@@ -55,7 +55,7 @@ interaction unlocks audio playback under autoplay policies.
 | Medium agent | `mistral-medium-latest` | `IMPOSTRAL_CHAT_MODEL_MEDIUM` |
 | Small agent | `mistral-small-latest` | `IMPOSTRAL_CHAT_MODEL_SMALL` |
 | Ministral agent | `ministral-8b-latest` | `IMPOSTRAL_CHAT_MODEL_MINISTRAL` |
-| STT | `voxtral-mini-latest` | `IMPOSTRAL_STT_MODEL` |
+| STT | `voxtral-mini-latest` (English) | `IMPOSTRAL_STT_MODEL`, `IMPOSTRAL_STT_LANGUAGE` |
 | TTS | `voxtral-mini-tts-latest` | `IMPOSTRAL_TTS_MODEL` |
 
 The default room has three humans and three agents, using Large, Medium, and
