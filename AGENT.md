@@ -70,8 +70,10 @@ accusatory. Only `output` enters the transcript.
 
 Each finished game appends a JSON record to `IMPOSTRAL_STATS_PATH` (default
 `data/results.jsonl`). `app/game/stats.py` records each model's win, survival,
-elimination round, and competitive vote accuracy. `/stats` exposes aggregates
-and `/stats.html` renders the model comparison dashboard.
+elimination round, and competitive vote accuracy. Humans are recorded too, but
+grouped anonymously into a single `Humans` bucket (never per pseudonym), so the
+dashboard compares humans against each AI model. `/stats` exposes aggregates and
+`/stats.html` renders the model comparison dashboard.
 
 ## `mistralai` SDK version caveat
 

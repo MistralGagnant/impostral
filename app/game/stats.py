@@ -38,12 +38,26 @@ def record_game(room, winners: list[str]) -> None:
             for seat in room.seats.values()
             if seat.kind == "llm"
         ]
+        # Humans are recorded as one anonymous group; individual pseudonyms are
+        # never stored, so aggregation compares "Humans" against each AI model.
+        humans = [
+            {
+                "seat": seat.id,
+                "survived": seat.alive,
+                "eliminated_round": seat.eliminated_round,
+                "votes_total": seat.votes_total,
+                "votes_correct": seat.votes_correct,
+            }
+            for seat in room.seats.values()
+            if seat.kind == "human"
+        ]
         record = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "room": room.id,
             "winners": winners,
             "rounds": rounds,
             "llms": llms,
+            "humans": humans,
         }
         path = _path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,20 +106,25 @@ def aggregate() -> dict:
             },
         )
 
+    def accumulate(seat: dict, model: str, rounds: int) -> None:
+        b = bucket(model)
+        b["games"] += 1
+        if seat.get("won"):
+            b["wins"] += 1
+        if seat.get("survived"):
+            b["survivals"] += 1
+        b["votes_total"] += seat.get("votes_total", 0) or 0
+        b["votes_correct"] += seat.get("votes_correct", 0) or 0
+        elim = seat.get("eliminated_round")
+        b["rounds_survived_sum"] += elim if elim is not None else rounds
+
     for rec in records:
         rounds = rec.get("rounds", 0) or 0
         for seat in rec.get("llms", []):
-            model = seat.get("model") or "(unknown)"
-            b = bucket(model)
-            b["games"] += 1
-            if seat.get("won"):
-                b["wins"] += 1
-            if seat.get("survived"):
-                b["survivals"] += 1
-            b["votes_total"] += seat.get("votes_total", 0) or 0
-            b["votes_correct"] += seat.get("votes_correct", 0) or 0
-            elim = seat.get("eliminated_round")
-            b["rounds_survived_sum"] += elim if elim is not None else rounds
+            accumulate(seat, seat.get("model") or "(unknown)", rounds)
+        # All humans across every game collapse into one "Humans" bucket.
+        for seat in rec.get("humans", []):
+            accumulate(seat, "Humans", rounds)
 
     models = []
     for model, b in sorted(acc.items()):
