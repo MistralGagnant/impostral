@@ -337,6 +337,7 @@ class GameEngine:
         if not payload:
             return ""
         audio_b64 = payload.get("audio_b64")
+        audio_mime = payload.get("audio_mime") or "audio/webm"
         fallback = (payload.get("text") or "").strip()
         audio_bytes = None
         if audio_b64:
@@ -344,7 +345,9 @@ class GameEngine:
                 audio_bytes = base64.b64decode(audio_b64)
             except Exception:  # noqa: BLE001
                 audio_bytes = None
-        return await stt.transcribe(audio_bytes, fallback_text=fallback)
+        return await stt.transcribe(
+            audio_bytes, mime_type=audio_mime, fallback_text=fallback
+        )
 
     async def _broadcast_state(self) -> None:
         seats = [s.public() for s in self.room.seats.values()]

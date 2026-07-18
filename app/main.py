@@ -243,7 +243,11 @@ def _normalize(msg) -> dict:
     """Convert a validated client message into a game-engine payload."""
     t = msg.type
     if t == "audio_blob":
-        return {"audio_b64": msg.audio_b64, "text": msg.text}
+        return {
+            "audio_b64": msg.audio_b64,
+            "audio_mime": msg.audio_mime,
+            "text": msg.text,
+        }
     if t == "submit_vote":
         return {"target": msg.target}
     return {}

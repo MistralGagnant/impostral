@@ -70,6 +70,7 @@
 
   let phaseCountdown = null;
   let inputCountdown = null;
+  let activeInputCleanup = null;
 
   // A full page reload always starts fresh on the home screen.
   try { sessionStorage.removeItem("impostral.activeMatch"); } catch {}
@@ -348,6 +349,7 @@
     ws.onmessage = (event) => handle(JSON.parse(event.data));
     ws.onclose = () => {
       if (serial !== connectionSerial) return;
+      hideInput();
       joinBtn.disabled = false;
       joinBtn.querySelector("span").textContent = mode === "create" ? "Create & enter" : "Join lobby";
       playBtn.disabled = false;
@@ -384,6 +386,8 @@
   function returnToJoin(message) {
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
+    hideInput();
+    hideVote();
     saveCurrentMatch(null);
     you = null;
     isLobbyHost = false;
@@ -696,8 +700,8 @@
   // Input panels
   // ------------------------------------------------------------------
   function onRequestInput(msg) {
+    hideInput();
     if (msg.mode === "vote") {
-      hideInput();
       buildVotePanel(msg.targets || []);
       return;
     }
@@ -705,13 +709,23 @@
     hideVote();
     inputPanel.classList.remove("hidden");
     inputControls.innerHTML = "";
-    startCountdown(inputTimer, msg.deadline, (h) => (inputCountdown = h), "Your turn: ");
 
     if (msg.mode === "answer") {
-      buildSpeakPanel((payload) => {
-        ws.send(JSON.stringify({ type: "audio_blob", ...payload }));
+      const panel = buildSpeakPanel((payload) => {
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "audio_blob", ...payload }));
+        }
         hideInput();
       });
+      activeInputCleanup = panel.cleanup;
+      startCountdown(
+        inputTimer,
+        msg.deadline,
+        (handle) => (inputCountdown = handle),
+        "Your turn: ",
+        false,
+        hideInput,
+      );
     }
   }
 
@@ -722,10 +736,16 @@
     ta.placeholder = "Type your answer… or use the mic";
     const btn = mkBtn("● Mic", null, "rec");
     let recording = false;
+    let starting = false;
+    let cancelled = false;
     let sent = false;
 
     const refresh = () => {
-      if (recording) {
+      btn.disabled = starting || sent;
+      if (starting) {
+        btn.textContent = "Opening mic…";
+        btn.className = "rec";
+      } else if (recording) {
         btn.textContent = "■ Stop & send";
         btn.className = "rec recording";
       } else if (ta.value.trim()) {
@@ -738,37 +758,60 @@
     };
 
     const send = (payload) => {
-      if (sent) return;
+      if (sent || cancelled) return;
       sent = true;
+      refresh();
       onSend(payload);
+    };
+
+    const cleanup = () => {
+      cancelled = true;
+      recording = false;
+      starting = false;
     };
 
     ta.addEventListener("input", refresh);
     ta.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey && ta.value.trim()) {
         event.preventDefault();
-        send({ audio_b64: null, text: ta.value.trim() });
+        send({ audio_b64: null, audio_mime: null, text: ta.value.trim() });
       }
     });
     btn.addEventListener("click", async () => {
+      if (starting || sent || cancelled) return;
       if (recording) {
         recording = false;
-        const b64 = await A.stopRecording();
-        send({ audio_b64: b64 || null, text: ta.value.trim() });
+        starting = true;
+        refresh();
+        const audio = await A.stopRecording();
+        starting = false;
+        if (cancelled || sent) return;
+        send({
+          audio_b64: audio?.audio_b64 || null,
+          audio_mime: audio?.audio_mime || null,
+          text: ta.value.trim(),
+        });
         return;
       }
       if (ta.value.trim()) {
-        send({ audio_b64: null, text: ta.value.trim() });
+        send({ audio_b64: null, audio_mime: null, text: ta.value.trim() });
         return;
       }
+      starting = true;
+      refresh();
       const ok = await A.startRecording();
+      starting = false;
+      if (cancelled) {
+        A.cancelRecording();
+        return;
+      }
       if (ok) recording = true;
       else ta.placeholder = "Mic unavailable — type your answer";
       refresh();
     });
 
     inputControls.append(ta, btn);
-    return { textarea: ta, btn };
+    return { textarea: ta, btn, cleanup };
   }
 
   function buildVotePanel(targets) {
@@ -932,9 +975,13 @@
   // Utilities
   // ------------------------------------------------------------------
   function hideInput() {
+    if (activeInputCleanup) activeInputCleanup();
+    activeInputCleanup = null;
+    A.cancelRecording();
     inputPanel.classList.add("hidden");
     inputControls.innerHTML = "";
     if (inputCountdown) { clearInterval(inputCountdown); inputCountdown = null; }
+    inputTimer.textContent = "";
   }
 
   function hideVote() {
@@ -945,20 +992,32 @@
     submitVote.onclick = null;
   }
 
-  function startCountdown(el, seconds, store, prefix = "", compact = false) {
+  function startCountdown(
+    el, seconds, store, prefix = "", compact = false, onExpire = null,
+  ) {
     if (typeof seconds !== "number") { el.textContent = ""; return; }
     let remaining = Math.round(seconds);
+    let expired = false;
     const tick = () => {
       el.textContent = compact
         ? String(Math.max(0, remaining))
         : prefix + (remaining > 0 ? `${remaining}s` : "…");
-      if (remaining <= 0) clearInterval(handle);
+      if (remaining <= 0) {
+        clearInterval(handle);
+        if (!expired) {
+          expired = true;
+          if (onExpire) onExpire();
+        }
+        return;
+      }
       remaining -= 1;
     };
     const handle = setInterval(tick, 1000);
-    tick();
     store(handle);
+    tick();
   }
+
+  window.addEventListener("pagehide", () => A.cancelRecording());
 
   function mkBtn(text, onClick, cls) {
     const b = document.createElement("button");

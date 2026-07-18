@@ -55,6 +55,18 @@ class WebUiTest(unittest.TestCase):
         self.assertIn("let playbackRate = 1.1", audio_js)
         self.assertIn("audio.playbackRate = playbackRate", audio_js)
 
+    def test_microphone_is_released_and_preserves_its_media_type(self) -> None:
+        audio_js = (ROOT / "web" / "audio.js").read_text(encoding="utf-8")
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("track.stop()", audio_js)
+        self.assertIn("captureGeneration", audio_js)
+        self.assertIn("cancelRecording", audio_js)
+        self.assertIn("audio_mime: audioMime", audio_js)
+        self.assertIn("A.cancelRecording()", app_js)
+        self.assertIn("audio?.audio_mime", app_js)
+        self.assertIn("onExpire", app_js)
+
     def test_lobby_wait_is_explained_clearly(self) -> None:
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         css = (ROOT / "web" / "style.css").read_text(encoding="utf-8")

@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 
 class Phase(str, Enum):
@@ -35,8 +35,9 @@ class JoinMsg(BaseModel):
 
 class AudioBlobMsg(BaseModel):
     type: Literal["audio_blob"]
-    # Base64 WebM/Opus audio from MediaRecorder, or fallback text.
+    # Base64 audio from MediaRecorder with its actual MIME type, or fallback text.
     audio_b64: Optional[str] = None
+    audio_mime: Optional[str] = Field(default=None, max_length=100)
     text: Optional[str] = None
 
 

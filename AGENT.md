@@ -148,7 +148,8 @@ another reservation. Creation returns 409 if the name is taken and 400 if
 public Turnstile site key when enforcement is active.
 
 - **Client -> server**: `join{name, player_id, session_id, reservation_token}`,
-  `start_game` (private host only), `audio_blob{audio_b64|text}`, `submit_vote{target}`, and
+  `start_game` (private host only), `audio_blob{audio_b64,audio_mime,text}`,
+  `submit_vote{target}`, and
   `playback_complete{playback_id}`.
 - **Server -> client**: `room_state`, `phase_change{phase, deadline, prompt}`,
   `utterance{seat, text, audio_url, context, playback_id}`,
