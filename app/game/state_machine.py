@@ -213,9 +213,15 @@ class GameEngine:
             if seat.kind == "llm":
                 self.eliminated_llms.append(seat.id)
             role = seat.kind if self.settings.reveal_role_on_elimination else None
-            await self.room.broadcast(events.srv_elimination(seat=eliminated, role=role))
+            model = seat.model if role == "llm" else None
+            await self.room.broadcast(
+                events.srv_elimination(seat=eliminated, role=role, model=model)
+            )
             if role == "llm":
-                await self._system(f"{eliminated} is out… they were an AI.")
+                await self._system(
+                    f"{eliminated} is out… they were an AI ({model})."
+                    if model else f"{eliminated} is out… they were an AI."
+                )
             elif role == "human":
                 await self._system(f"{eliminated} is out… they were human.")
             else:
@@ -259,10 +265,12 @@ class GameEngine:
                 else "No winning AI could be determined."
             )
         roles = {s.id: s.kind for s in self.room.seats.values()}
+        models = {s.id: s.model for s in self.room.seats.values() if s.model}
         stats.record_game(self.room, winners)
         await self.room.broadcast(
             events.srv_game_over(
-                winner="agents", winners=winners, roles=roles, message=result
+                winner="agents", winners=winners, roles=roles,
+                models=models, message=result,
             )
         )
         await self._system("Game over. " + result)

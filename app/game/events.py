@@ -120,18 +120,21 @@ def srv_vote_result(
     }
 
 
-def srv_elimination(*, seat: str, role: Optional[str]) -> dict:
-    return {"type": "elimination", "seat": seat, "role": role}
+def srv_elimination(*, seat: str, role: Optional[str], model: Optional[str] = None) -> dict:
+    # `model` names the LLM behind an AI seat (e.g. "mistral-large-latest").
+    return {"type": "elimination", "seat": seat, "role": role, "model": model}
 
 
 def srv_game_over(
-    *, winner: str, winners: list[str], roles: dict[str, str], message: str = ""
+    *, winner: str, winners: list[str], roles: dict[str, str],
+    models: dict[str, str], message: str = "",
 ) -> dict:
     return {
         "type": "game_over",
         "winner": winner,
         "winners": winners,
         "roles": roles,
+        "models": models,  # seat id -> model name, for AI seats only.
         "message": message,
     }
 
