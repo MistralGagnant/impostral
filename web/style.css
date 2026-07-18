@@ -40,7 +40,7 @@ button { cursor: pointer; }
 .hidden { display: none !important; }
 
 /* --------------------------------------------------------------------------
-   App shell: header / main / (no footer). Column that fills the viewport.
+   App shell: header / main. Column that fills the viewport.
    -------------------------------------------------------------------------- */
 .app-shell {
   display: flex;
@@ -287,6 +287,17 @@ input:focus, textarea:focus, select:focus {
   mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
 }
+
+.hackathon-credit {
+  grid-column: 1 / -1;
+  color: var(--faint);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+.hackathon-credit span { margin: 0 0.45em; }
+.hackathon-credit a { color: var(--muted); text-underline-offset: 3px; }
+.hackathon-credit a:hover { color: var(--orange); }
 
 /* --------------------------------------------------------------------------
    Game screen
